@@ -1,7 +1,10 @@
 [package]
 name = "crabguard"
 version = "0.1.0"
+description = "A minimalistic CLI app for encrypted CRUD operations on local and remote storage"
 edition = "2021"
+authors = ["Makis Christou <makis_christou@protonmail.com>"]
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

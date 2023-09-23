@@ -1,1 +1,1 @@
-🦀 CrabGuard: A minimalistic Rust CLI for encrypted CRUD operations on local and remote storage
+🦀 CrabGuard: A minimalistic CLI app for encrypted CRUD operations on local and remote storage
