@@ -9,6 +9,7 @@ use ring::aead::AES_256_GCM;
 use ring::aead::NONCE_LEN;
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::path::Path;
 
 use ring::error::Unspecified;
 use ring::rand::{SecureRandom, SystemRandom};
@@ -82,4 +83,50 @@ pub fn decrypt(
     let mut opening_key = OpeningKey::new(unbound_key, nonce_sequence);
     let decrypted_data = opening_key.open_in_place(Aad::empty(), &mut cypher_text_with_tag)?;
     Ok(decrypted_data.to_vec())
+}
+
+#[cfg(test)]
+mod test {
+    use super::{create_random_aes_key, decrypt, encrypt, CounterNonceSequence};
+
+    #[test]
+    fn should_encrypt_decrypt_correctly() {
+        let plaintext = b"Hello World!".to_vec();
+
+        let key_bytes = create_random_aes_key();
+        let nonce_sequence = CounterNonceSequence(1);
+
+        let cypher_text_with_tag =
+            encrypt(plaintext.clone(), key_bytes.clone(), nonce_sequence).unwrap();
+
+        let nonce_sequence = CounterNonceSequence(1);
+        let decrypted_ciphertext =
+            decrypt(cypher_text_with_tag, key_bytes, nonce_sequence).unwrap();
+
+        assert_eq!(decrypted_ciphertext, plaintext);
+    }
+
+    #[test]
+    fn should_panic_when_ciphertext_is_invalid() {
+        let plaintext = b"Hello World!".to_vec();
+
+        let key_bytes = create_random_aes_key();
+        let nonce_sequence = CounterNonceSequence(1);
+
+        let mut cypher_text_with_tag =
+            encrypt(plaintext.clone(), key_bytes.clone(), nonce_sequence).unwrap();
+
+        // Flip some bits
+        cypher_text_with_tag[0] = cypher_text_with_tag[0] ^ cypher_text_with_tag[0];
+
+        let nonce_sequence = CounterNonceSequence(1);
+        match decrypt(cypher_text_with_tag, key_bytes, nonce_sequence) {
+            Ok(decrypted_ciphertext) => {
+                assert!(false)
+            }
+            Err(e) => {
+                assert!(true)
+            }
+        };
+    }
 }
