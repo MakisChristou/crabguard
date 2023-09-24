@@ -1,5 +1,6 @@
 use dotenv::dotenv;
 use rand::Rng;
+use ring::aead::NONCE_LEN;
 use ring::error::Unspecified;
 use std::env;
 use std::fs;
@@ -36,28 +37,11 @@ fn main() -> Result<(), Unspecified> {
     let cli = Cli::parse_arguments();
 
     match &cli.command {
-        Some(Commands::Encrypt { source, output }) => {
-            let data = fs::read(source).unwrap();
-
-            let nonce_sequence = utils::CounterNonceSequence(1);
-            let cypher_text_with_tag =
-                utils::encrypt(data.clone(), key_bytes.clone(), nonce_sequence)?;
-
-            let _ = fs::write(output, cypher_text_with_tag);
-        }
-        Some(Commands::Decrypt { source, output }) => {
-            let cypher_text_with_tag = fs::read(source).unwrap();
-
-            let nonce_sequence = utils::CounterNonceSequence(1);
-            let decrypted_data = utils::decrypt(cypher_text_with_tag, key_bytes, nonce_sequence)?;
-
-            let _ = fs::write(output, decrypted_data);
-        }
         Some(Commands::Upload { file_path }) => {
             let data = fs::read(file_path).unwrap();
 
             let nonce_sequence = CounterNonceSequence::new_random();
-            let starting_value = nonce_sequence.0.to_be_bytes().to_vec();
+            let starting_value = nonce_sequence.0.to_vec();
 
             let cypher_text_with_tag =
                 utils::encrypt(data.clone(), key_bytes.clone(), nonce_sequence)?;
@@ -85,13 +69,13 @@ fn main() -> Result<(), Unspecified> {
                     .download(&format!("{}.enc", file_name.to_str().unwrap()))
                     .unwrap();
 
-                // Extract nonce from first 4 bytes of file
-                let starting_value = &file_contents[..4];
-                let nonce_starting_value = u32::from_be_bytes(starting_value.try_into().unwrap());
-                let nonce_sequence = CounterNonceSequence::new(nonce_starting_value);
+                // Extract nonce from first 12 bytes of file
+                let starting_value = &file_contents[..NONCE_LEN];
+                let nonce_array: [u8; NONCE_LEN] = starting_value.try_into().unwrap();
+                let nonce_sequence = CounterNonceSequence::new(nonce_array);
 
                 // Extract actual cyphertext
-                let cypher_text_with_tag = &file_contents[4..];
+                let cypher_text_with_tag = &file_contents[NONCE_LEN..];
 
                 let decrypted_data =
                     utils::decrypt(cypher_text_with_tag.to_vec(), key_bytes, nonce_sequence)?;

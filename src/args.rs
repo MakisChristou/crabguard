@@ -10,12 +10,6 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Encrypt a file
-    Encrypt { source: String, output: String },
-
-    /// Decrypt a file
-    Decrypt { source: String, output: String },
-
     /// Upload a file to storage
     Upload { file_path: String },
 

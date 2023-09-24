@@ -14,31 +14,30 @@ use std::io::Write;
 use ring::error::Unspecified;
 use ring::rand::{SecureRandom, SystemRandom};
 
-pub struct CounterNonceSequence(pub u32);
+pub struct CounterNonceSequence(pub [u8; NONCE_LEN]);
 
 impl CounterNonceSequence {
-    // Create a new CounterNonceSequence with a random starting value
-    pub fn new_random() -> Self {
-        let random_value = rand::thread_rng().gen();
-        CounterNonceSequence(random_value)
-    }
-
-    // Create a CounterNonceSequence with a specific starting value
-    pub fn new(start: u32) -> Self {
+    pub fn new(start: [u8; 12]) -> Self {
         CounterNonceSequence(start)
+    }
+    // Create a new CounterNonceSequence with a random 12-byte value
+    pub fn new_random() -> Self {
+        let mut random_value = [0u8; NONCE_LEN];
+        rand::thread_rng().fill(&mut random_value);
+        CounterNonceSequence(random_value)
     }
 }
 
 impl NonceSequence for CounterNonceSequence {
     // called once for each seal operation
     fn advance(&mut self) -> Result<Nonce, Unspecified> {
-        let mut nonce_bytes = vec![0; NONCE_LEN];
+        // Use the entire 12-byte value for the nonce
+        let nonce = Nonce::try_assume_unique_for_key(&self.0)?;
 
-        let bytes = self.0.to_be_bytes();
-        nonce_bytes[8..].copy_from_slice(&bytes);
+        // Update the nonce for the next use (e.g., increment or generate a new random value)
+        rand::thread_rng().fill(&mut self.0);
 
-        self.0 += 1; // advance the counter
-        Nonce::try_assume_unique_for_key(&nonce_bytes)
+        Ok(nonce)
     }
 }
 
@@ -107,12 +106,13 @@ mod test {
         let plaintext = b"Hello World!".to_vec();
 
         let key_bytes = create_random_aes_key();
-        let nonce_sequence = CounterNonceSequence(1);
+        let starting_value: [u8; 12] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+        let nonce_sequence = CounterNonceSequence::new(starting_value);
 
         let cypher_text_with_tag =
             encrypt(plaintext.clone(), key_bytes.clone(), nonce_sequence).unwrap();
 
-        let nonce_sequence = CounterNonceSequence(1);
+        let nonce_sequence = CounterNonceSequence::new(starting_value);
         let decrypted_ciphertext =
             decrypt(cypher_text_with_tag, key_bytes, nonce_sequence).unwrap();
 
@@ -124,7 +124,8 @@ mod test {
         let plaintext = b"Hello World!".to_vec();
 
         let key_bytes = create_random_aes_key();
-        let nonce_sequence = CounterNonceSequence(1);
+        let starting_value: [u8; 12] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+        let nonce_sequence = CounterNonceSequence::new(starting_value);
 
         let mut cypher_text_with_tag =
             encrypt(plaintext.clone(), key_bytes.clone(), nonce_sequence).unwrap();
@@ -132,7 +133,7 @@ mod test {
         // Flip some bits
         cypher_text_with_tag[0] = cypher_text_with_tag[0] ^ cypher_text_with_tag[0];
 
-        let nonce_sequence = CounterNonceSequence(1);
+        let nonce_sequence = CounterNonceSequence::new(starting_value);
         match decrypt(cypher_text_with_tag, key_bytes, nonce_sequence) {
             Ok(decrypted_ciphertext) => {
                 assert!(false)
