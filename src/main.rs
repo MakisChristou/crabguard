@@ -23,9 +23,15 @@ fn main() -> Result<(), Unspecified> {
         }
     };
 
-    let cli = Cli::parse_arguments();
+    let local_directory = match env::var("LOCAL_DIR") {
+        Ok(value) => value,
+        Err(_) => String::from("crabguard_files"),
+    };
 
-    let local_storage = LocalStorage::new("crabguard_files");
+    fs::create_dir_all(&local_directory).unwrap();
+    let local_storage = LocalStorage::new(&local_directory);
+
+    let cli = Cli::parse_arguments();
 
     match &cli.command {
         Some(Commands::Encrypt { source, output }) => {
