@@ -1,31 +1,23 @@
 use std::fs;
-use std::fs::OpenOptions;
 
 use clap::Parser;
 use ring::aead::Aad;
-use ring::aead::Algorithm;
 use ring::aead::BoundKey;
 use ring::aead::Nonce;
 use ring::aead::NonceSequence;
 use ring::aead::OpeningKey;
 use ring::aead::SealingKey;
-use ring::aead::Tag;
 use ring::aead::UnboundKey;
-use ring::aead::AES_128_GCM;
 use ring::aead::AES_256_GCM;
-use ring::aead::CHACHA20_POLY1305;
 use ring::aead::NONCE_LEN;
 use ring::error::Unspecified;
-use ring::rand::SecureRandom;
-use ring::rand::SystemRandom;
 
 use crate::args::Args;
 use dotenv::dotenv;
 use std::env;
-use std::io::Write;
-
 
 mod args;
+mod utils;
 
 struct CounterNonceSequence(u32);
 
@@ -43,26 +35,6 @@ impl NonceSequence for CounterNonceSequence {
     }
 }
 
-fn create_random_aes_key() -> Vec<u8> {
-    let rand = SystemRandom::new();
-    let mut key_bytes = vec![0; AES_256_GCM.key_len()];
-    rand.fill(&mut key_bytes).unwrap();
-    key_bytes
-}
-
-fn write_key_to_env_file(key: &Vec<u8>) {
-    let filename = ".env";
-
-    // Open the file in append mode, or create it if it doesn't exist.
-    let mut file = OpenOptions::new()
-        .create(true)  // Create the file if it doesn't exist.
-        .append(true)  // Append to the file if it exists.
-        .open(filename).unwrap();
-
-    // Write some content to the file.
-    writeln!(file, "AES_KEY={}", hex::encode(key)).unwrap();
-}
-
 fn main() -> Result<(), Unspecified> {
     let args = Args::parse();
 
@@ -70,8 +42,8 @@ fn main() -> Result<(), Unspecified> {
     let key_bytes = match env::var("AES_KEY") {
         Ok(value) => hex::decode(value).expect("Decoding failed"),
         Err(_) => {
-            let key = create_random_aes_key();
-            write_key_to_env_file(&key);
+            let key = utils::create_random_aes_key();
+            utils::write_key_to_env_file(&key);
             key
         }
     };
@@ -92,7 +64,7 @@ fn main() -> Result<(), Unspecified> {
     // This data will be authenticated but not encrypted
     //let associated_data = Aad::empty(); // is optional so can be empty
     let associated_data = Aad::from(b"additional public data");
- 
+
     // Data to be encrypted
     // let data = b"hello world";
     let data = fs::read(args.target).unwrap();
