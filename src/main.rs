@@ -1,10 +1,12 @@
 use dotenv::dotenv;
+use rand::Rng;
 use ring::error::Unspecified;
 use std::env;
 use std::fs;
 use std::path::Path;
 use storage::local::LocalStorage;
 use storage::Storage;
+use utils::CounterNonceSequence;
 
 use crate::args::{Cli, Commands};
 
@@ -54,16 +56,22 @@ fn main() -> Result<(), Unspecified> {
         Some(Commands::Upload { file_path }) => {
             let data = fs::read(file_path).unwrap();
 
-            let nonce_sequence = utils::CounterNonceSequence(1);
+            let nonce_sequence = CounterNonceSequence::new_random();
+            let starting_value = nonce_sequence.0.to_be_bytes().to_vec();
+
             let cypher_text_with_tag =
                 utils::encrypt(data.clone(), key_bytes.clone(), nonce_sequence)?;
 
             let path = Path::new(file_path);
             if let Some(file_name) = path.file_name() {
+                // Prepend the nonce on the ciphertext
+                let mut data_to_store = starting_value;
+                data_to_store.extend_from_slice(&cypher_text_with_tag);
+
                 local_storage
                     .upload(
                         &format!("{}.enc", file_name.to_str().unwrap()),
-                        &cypher_text_with_tag,
+                        &data_to_store,
                     )
                     .unwrap();
             } else {
@@ -77,8 +85,16 @@ fn main() -> Result<(), Unspecified> {
                     .download(&format!("{}.enc", file_name.to_str().unwrap()))
                     .unwrap();
 
-                let nonce_sequence = utils::CounterNonceSequence(1);
-                let decrypted_data = utils::decrypt(file_contents, key_bytes, nonce_sequence)?;
+                // Extract nonce from first 4 bytes of file
+                let starting_value = &file_contents[..4];
+                let nonce_starting_value = u32::from_be_bytes(starting_value.try_into().unwrap());
+                let nonce_sequence = CounterNonceSequence::new(nonce_starting_value);
+
+                // Extract actual cyphertext
+                let cypher_text_with_tag = &file_contents[4..];
+
+                let decrypted_data =
+                    utils::decrypt(cypher_text_with_tag.to_vec(), key_bytes, nonce_sequence)?;
 
                 fs::write(file_name, decrypted_data).unwrap();
             } else {

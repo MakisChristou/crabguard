@@ -1,3 +1,4 @@
+use rand::Rng;
 use ring::aead::Aad;
 use ring::aead::BoundKey;
 use ring::aead::Nonce;
@@ -14,6 +15,19 @@ use ring::error::Unspecified;
 use ring::rand::{SecureRandom, SystemRandom};
 
 pub struct CounterNonceSequence(pub u32);
+
+impl CounterNonceSequence {
+    // Create a new CounterNonceSequence with a random starting value
+    pub fn new_random() -> Self {
+        let random_value = rand::thread_rng().gen();
+        CounterNonceSequence(random_value)
+    }
+
+    // Create a CounterNonceSequence with a specific starting value
+    pub fn new(start: u32) -> Self {
+        CounterNonceSequence(start)
+    }
+}
 
 impl NonceSequence for CounterNonceSequence {
     // called once for each seal operation
