@@ -1,20 +1,27 @@
-use ring::error::Unspecified;
-use ring::rand::SecureRandom;
-use ring::rand::SystemRandom;
+use std::fs;
+
+use clap::Parser;
+use ring::aead::Aad;
 use ring::aead::Algorithm;
+use ring::aead::BoundKey;
+use ring::aead::Nonce;
+use ring::aead::NonceSequence;
+use ring::aead::OpeningKey;
+use ring::aead::SealingKey;
+use ring::aead::Tag;
+use ring::aead::UnboundKey;
 use ring::aead::AES_128_GCM;
 use ring::aead::AES_256_GCM;
 use ring::aead::CHACHA20_POLY1305;
-use ring::aead::UnboundKey;
-use ring::aead::BoundKey;
-use ring::aead::SealingKey;
-use ring::aead::OpeningKey;
-use ring::aead::Aad;
-use ring::aead::Tag;
-use ring::aead::NonceSequence;
 use ring::aead::NONCE_LEN;
-use ring::aead::Nonce;
+use ring::error::Unspecified;
+use ring::rand::SecureRandom;
+use ring::rand::SystemRandom;
 
+use crate::args::Args;
+use dotenv::dotenv;
+use std::env;
+mod args;
 
 struct CounterNonceSequence(u32);
 
@@ -32,13 +39,25 @@ impl NonceSequence for CounterNonceSequence {
     }
 }
 
-fn main() -> Result<(), Unspecified> {
-    // Create a new instance of SystemRandom to be used as the single source of entropy
+fn create_random_aes_key() -> Vec<u8> {
     let rand = SystemRandom::new();
-
-    // Generate a new symmetric encryption key
     let mut key_bytes = vec![0; AES_256_GCM.key_len()];
-    rand.fill(&mut key_bytes)?;
+    rand.fill(&mut key_bytes).unwrap();
+    key_bytes
+}
+
+fn main() -> Result<(), Unspecified> {
+    let args = Args::parse();
+
+    dotenv().ok();
+    let key_bytes = match env::var("AES_KEY") {
+        Ok(value) => hex::decode(value).expect("Decoding failed"),
+        Err(_) => {
+            create_random_aes_key()
+        }
+    };
+
+    println!("Key Length is {} bytes", key_bytes.len());
     println!("key_bytes = {}", hex::encode(&key_bytes)); // don't print this in production code
 
     // Create a new AEAD key without a designated role or nonce sequence
@@ -51,14 +70,14 @@ fn main() -> Result<(), Unspecified> {
     // The SealingKey can be used multiple times, each time a new nonce will be used
     let mut sealing_key = SealingKey::new(unbound_key, nonce_sequence);
 
-
     // This data will be authenticated but not encrypted
     //let associated_data = Aad::empty(); // is optional so can be empty
     let associated_data = Aad::from(b"additional public data");
 
     // Data to be encrypted
-    let data = b"hello world";
-    println!("data = {}", String::from_utf8(data.to_vec()).unwrap());
+    // let data = b"hello world";
+    let data = fs::read(args.target).unwrap();
+    // println!("data = {}", String::from_utf8(data.to_vec()).unwrap());
 
     // Create a mutable copy of the data that will be encrypted in place
     let mut in_out = data.clone();
@@ -77,8 +96,11 @@ fn main() -> Result<(), Unspecified> {
 
     // Decrypt the data by passing in the associated data and the cypher text with the authentication tag appended
     let mut cypher_text_with_tag = [&in_out, tag.as_ref()].concat();
-    let decrypted_data = opening_key.open_in_place( associated_data, &mut cypher_text_with_tag)?;
-    println!("decrypted_data = {}", String::from_utf8(decrypted_data.to_vec()).unwrap());
+    let decrypted_data = opening_key.open_in_place(associated_data, &mut cypher_text_with_tag)?;
+    // println!(
+    //     "decrypted_data = {}",
+    //     String::from_utf8(decrypted_data.to_vec()).unwrap()
+    // );
 
     assert_eq!(data, decrypted_data);
     Ok(())
