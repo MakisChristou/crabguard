@@ -1,4 +1,5 @@
 use std::fs;
+use std::fs::OpenOptions;
 
 use clap::Parser;
 use ring::aead::Aad;
@@ -21,6 +22,9 @@ use ring::rand::SystemRandom;
 use crate::args::Args;
 use dotenv::dotenv;
 use std::env;
+use std::io::Write;
+
+
 mod args;
 
 struct CounterNonceSequence(u32);
@@ -46,6 +50,19 @@ fn create_random_aes_key() -> Vec<u8> {
     key_bytes
 }
 
+fn write_key_to_env_file(key: &Vec<u8>) {
+    let filename = ".env";
+
+    // Open the file in append mode, or create it if it doesn't exist.
+    let mut file = OpenOptions::new()
+        .create(true)  // Create the file if it doesn't exist.
+        .append(true)  // Append to the file if it exists.
+        .open(filename).unwrap();
+
+    // Write some content to the file.
+    writeln!(file, "AES_KEY={}", hex::encode(key)).unwrap();
+}
+
 fn main() -> Result<(), Unspecified> {
     let args = Args::parse();
 
@@ -53,7 +70,9 @@ fn main() -> Result<(), Unspecified> {
     let key_bytes = match env::var("AES_KEY") {
         Ok(value) => hex::decode(value).expect("Decoding failed"),
         Err(_) => {
-            create_random_aes_key()
+            let key = create_random_aes_key();
+            write_key_to_env_file(&key);
+            key
         }
     };
 
@@ -73,7 +92,7 @@ fn main() -> Result<(), Unspecified> {
     // This data will be authenticated but not encrypted
     //let associated_data = Aad::empty(); // is optional so can be empty
     let associated_data = Aad::from(b"additional public data");
-
+ 
     // Data to be encrypted
     // let data = b"hello world";
     let data = fs::read(args.target).unwrap();
