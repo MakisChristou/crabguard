@@ -54,10 +54,17 @@ fn main() -> Result<(), Unspecified> {
         Some(Commands::Upload { file_path }) => {
             let data = fs::read(file_path).unwrap();
 
+            let nonce_sequence = utils::CounterNonceSequence(1);
+            let cypher_text_with_tag =
+                utils::encrypt(data.clone(), key_bytes.clone(), nonce_sequence)?;
+
             let path = Path::new(file_path);
             if let Some(file_name) = path.file_name() {
                 local_storage
-                    .upload(&file_name.to_str().unwrap(), &data)
+                    .upload(
+                        &format!("{}.enc", file_name.to_str().unwrap()),
+                        &cypher_text_with_tag,
+                    )
                     .unwrap();
             } else {
                 panic!("Path given does not contain filename");
@@ -66,8 +73,14 @@ fn main() -> Result<(), Unspecified> {
         Some(Commands::Download { file_name }) => {
             let path = Path::new(file_name);
             if let Some(file_name) = path.file_name() {
-                let file_contents = local_storage.download(file_name.to_str().unwrap()).unwrap();
-                fs::write(file_name, file_contents).unwrap();
+                let file_contents = local_storage
+                    .download(&format!("{}.enc", file_name.to_str().unwrap()))
+                    .unwrap();
+
+                let nonce_sequence = utils::CounterNonceSequence(1);
+                let decrypted_data = utils::decrypt(file_contents, key_bytes, nonce_sequence)?;
+
+                fs::write(file_name, decrypted_data).unwrap();
             } else {
                 panic!("Path given does not contain filename");
             }
@@ -75,7 +88,9 @@ fn main() -> Result<(), Unspecified> {
         Some(Commands::Delete { file_name }) => {
             let path = Path::new(file_name);
             if let Some(file_name) = path.file_name() {
-                local_storage.delete(file_name.to_str().unwrap()).unwrap();
+                local_storage
+                    .delete(&format!("{}.enc", file_name.to_str().unwrap()))
+                    .unwrap();
             } else {
                 panic!("Path given does not contain filename");
             }
