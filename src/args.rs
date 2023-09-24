@@ -15,6 +15,18 @@ pub enum Commands {
 
     /// Decrypt a file
     Decrypt { source: String, output: String },
+
+    /// Upload a file to storage
+    Upload { file_path: String },
+
+    /// Download a file from storage
+    Download { file_name: String },
+
+    /// Delete a file from storage
+    Delete { file_name: String },
+
+    /// List all storage files
+    List {},
 }
 
 impl Cli {

@@ -15,13 +15,13 @@ impl LocalStorage {
 }
 
 impl Storage for LocalStorage {
-    fn upload(&self, path: &str, data: &[u8]) -> Result<(), String> {
-        match fs::copy(path, &self.path) {
+    fn upload(&self, filename: &str, data: &[u8]) -> Result<(), String> {
+        match fs::write(format!("{}/{}", &self.path, filename), data) {
             Ok(code) => Ok(()),
             Err(e) => {
                 panic!(
                     "Could not upload file {} to {} with error: {}",
-                    path, self.path, e
+                    filename, self.path, e
                 );
             }
         }
