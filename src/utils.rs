@@ -9,7 +9,6 @@ use ring::aead::AES_256_GCM;
 use ring::aead::NONCE_LEN;
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::path::Path;
 
 use ring::error::Unspecified;
 use ring::rand::{SecureRandom, SystemRandom};

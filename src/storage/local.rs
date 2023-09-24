@@ -17,7 +17,7 @@ impl LocalStorage {
 impl Storage for LocalStorage {
     fn upload(&self, filename: &str, data: &[u8]) -> Result<(), String> {
         match fs::write(format!("{}/{}", &self.path, filename), data) {
-            Ok(code) => Ok(()),
+            Ok(_) => Ok(()),
             Err(e) => {
                 panic!(
                     "Could not upload file {} to {} with error: {}",
