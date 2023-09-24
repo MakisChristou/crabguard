@@ -6,6 +6,7 @@ use std::fs;
 use crate::args::{Cli, Commands};
 
 mod args;
+mod storage;
 mod utils;
 
 fn main() -> Result<(), Unspecified> {
