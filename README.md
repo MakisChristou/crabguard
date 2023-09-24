@@ -1,1 +1,1 @@
-🦀 CrabGuard: A minimalistic CLI app for encrypted CRUD operations on local and remote storage
+🦀🔒 crabguard: A cli tool for end-to-end encryption for remote and local storage
