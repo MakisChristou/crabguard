@@ -1,7 +1,8 @@
 use dotenv::dotenv;
-use rand::Rng;
 use ring::aead::NONCE_LEN;
 use ring::error::Unspecified;
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -25,6 +26,8 @@ fn main() -> Result<(), Unspecified> {
             key
         }
     };
+
+    let mut filenames: HashMap<String, Vec<u8>> = HashMap::new();
 
     let local_directory = match env::var("LOCAL_DIR") {
         Ok(value) => value,
@@ -54,7 +57,10 @@ fn main() -> Result<(), Unspecified> {
 
                 local_storage
                     .upload(
-                        &format!("{}.enc", file_name.to_str().unwrap()),
+                        &format!(
+                            "{}",
+                            hex::encode(Sha256::digest(file_name.to_str().unwrap()))
+                        ),
                         &data_to_store,
                     )
                     .unwrap();
@@ -66,7 +72,10 @@ fn main() -> Result<(), Unspecified> {
             let path = Path::new(file_name);
             if let Some(file_name) = path.file_name() {
                 let file_contents = local_storage
-                    .download(&format!("{}.enc", file_name.to_str().unwrap()))
+                    .download(&format!(
+                        "{}",
+                        hex::encode(Sha256::digest(file_name.to_str().unwrap()))
+                    ))
                     .unwrap();
 
                 // Extract nonce from first 12 bytes of file
