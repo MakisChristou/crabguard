@@ -1,10 +1,17 @@
 use dotenv::dotenv;
 use ring::aead::NONCE_LEN;
 use ring::error::Unspecified;
+use serde::Deserialize;
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
+use std::fs::File;
+use std::hash::Hash;
+use std::io::ErrorKind;
+use std::io::Read;
+use std::io::Write;
 use std::path::Path;
 use storage::local::LocalStorage;
 use storage::Storage;
@@ -15,6 +22,36 @@ use crate::args::{Cli, Commands};
 mod args;
 mod storage;
 mod utils;
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Data {
+    filenames: HashMap<String, Vec<u8>>,
+}
+
+fn store_filenames_on_disk(filenames: HashMap<String, Vec<u8>>) {
+    // Serialize the hashmap using bincode
+    let encoded: Vec<u8> = bincode::serialize(&filenames).unwrap();
+
+    let mut file = File::create("filenames.bin").unwrap();
+    file.write_all(&encoded).unwrap();
+}
+
+fn retrieve_filenames_from_disk() -> HashMap<String, Vec<u8>> {
+    // Try to open the file
+    let mut file = match File::open("filenames.bin") {
+        Ok(file) => file,
+        Err(e) if e.kind() == ErrorKind::NotFound => return HashMap::new(),
+        Err(e) => panic!("Error opening file: {:?}", e),
+    };
+
+    // Read the file contents
+    let mut encoded = Vec::new();
+    file.read_to_end(&mut encoded).unwrap();
+
+    // Deserialize the data into a HashMap
+    let filenames: HashMap<String, Vec<u8>> = bincode::deserialize(&encoded).unwrap();
+    filenames
+}
 
 fn main() -> Result<(), Unspecified> {
     dotenv().ok();
@@ -27,7 +64,7 @@ fn main() -> Result<(), Unspecified> {
         }
     };
 
-    let mut filenames: HashMap<String, Vec<u8>> = HashMap::new();
+    let mut filenames = retrieve_filenames_from_disk();
 
     let local_directory = match env::var("LOCAL_DIR") {
         Ok(value) => value,
@@ -55,15 +92,34 @@ fn main() -> Result<(), Unspecified> {
                 let mut data_to_store = starting_value;
                 data_to_store.extend_from_slice(&cypher_text_with_tag);
 
+                let plaintext_filename = file_name.to_str().unwrap();
+                let hashed_filename =
+                    format!("{}", hex::encode(Sha256::digest(&plaintext_filename)));
+
                 local_storage
-                    .upload(
-                        &format!(
-                            "{}",
-                            hex::encode(Sha256::digest(file_name.to_str().unwrap()))
-                        ),
-                        &data_to_store,
-                    )
+                    .upload(&hashed_filename, &data_to_store)
                     .unwrap();
+
+                // Update the HashMap
+                let starting_value = &Sha256::digest(&plaintext_filename)[..NONCE_LEN];
+                let nonce_array: [u8; NONCE_LEN] = starting_value.try_into().unwrap();
+                let nonce_sequence = CounterNonceSequence::new(nonce_array);
+                let encrypted_name = utils::encrypt(
+                    plaintext_filename.try_into().unwrap(),
+                    key_bytes,
+                    nonce_sequence,
+                )
+                .unwrap();
+
+                // Update the HashMap in RAM
+                let mut name_blob: Vec<u8> = utils::usize_to_u8_2(encrypted_name.len()).to_vec();
+                name_blob.extend_from_slice(&encrypted_name);
+                name_blob.extend_from_slice(starting_value);
+                filenames.insert(hashed_filename, name_blob);
+
+                // Store it on disk serialized
+                store_filenames_on_disk(filenames);
+
             } else {
                 panic!("Path given does not contain filename");
             }

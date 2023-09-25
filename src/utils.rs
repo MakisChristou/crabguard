@@ -144,3 +144,10 @@ mod test {
         };
     }
 }
+
+pub fn usize_to_u8_2(value: usize) -> [u8; 2] {
+    if value > 65535 {
+        panic!("Value too large to fit in 2 bytes");
+    }
+    [(value >> 8) as u8, (value & 0xFF) as u8]
+}
