@@ -53,7 +53,7 @@ impl Storage for LocalStorage {
                 let res: Vec<String> = file_names
                     .filter_map(Result::ok)
                     .filter(|entry| entry.path().is_file())
-                    .map(|entry| entry.path().display().to_string())
+                    .map(|entry| entry.file_name().to_str().unwrap().to_owned())
                     .collect();
                 Ok(res)
             }
