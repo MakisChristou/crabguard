@@ -1,14 +1,25 @@
 🦀🔒 crabguard: A cli tool for end-to-end encryption for remote and local storage
 
+## Features
+- Encrypted CRUD on Amazon S3 storage
+- AES-GCM symmetric encryption with random 96-bit nonce
+- Encrypted filenames
+- File chuking
 
-## Encrypt a file 
+## Common Commands
 
 ```bash
-cargo r -- encrypt /path/to/file.txt /path/to/output.enc
+cargo r --release -- upload ~/Downloads/23-08-11\ 11-35-15\ 3555.jpg
 ```
 
-## Decrypt a file 
+```bash
+cargo r --release -- download 23-08-11\ 11-35-15\ 3555.jpg
+```
 
 ```bash
-cargo r -- decrypt /path/to/file.enc /path/to/output.txt
+cargo r --release -- delete 23-08-11\ 11-35-15\ 3555.jpg
+```
+
+```bash
+cargo r --release -- list
 ```
