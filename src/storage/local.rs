@@ -18,38 +18,32 @@ impl Storage for LocalStorage {
     fn upload(&self, filename: &str, data: &[u8]) -> Result<(), String> {
         match fs::write(format!("{}/{}", &self.path, filename), data) {
             Ok(_) => Ok(()),
-            Err(e) => {
-                panic!(
-                    "Could not upload file {} to {} with error: {}",
-                    filename, self.path, e
-                );
-            }
+            Err(e) => Err(format!(
+                "Could not upload file {} to {} with error: {}",
+                filename, self.path, e
+            )),
         }
     }
 
     fn download(&self, filename: &str) -> Result<Vec<u8>, String> {
         match fs::read(format!("{}/{}", self.path, filename)) {
             Ok(data) => Ok(data),
-            Err(e) => {
-                panic!(
-                    "Could not download file {} with error: {}",
-                    format!("{}/{}", self.path, filename),
-                    e
-                );
-            }
+            Err(e) => Err(format!(
+                "Could not download file {} with error: {}",
+                format!("{}/{}", self.path, filename),
+                e
+            )),
         }
     }
 
     fn delete(&self, filename: &str) -> Result<(), String> {
         match fs::remove_file(format!("{}/{}", self.path, filename)) {
             Ok(_) => Ok(()),
-            Err(e) => {
-                panic!(
-                    "Could not delete file {} with error: {}",
-                    format!("{}/{}", self.path, filename),
-                    e
-                );
-            }
+            Err(e) => Err(format!(
+                "Could not delete file {} with error: {}",
+                format!("{}/{}", self.path, filename),
+                e
+            )),
         }
     }
 
@@ -70,9 +64,10 @@ impl Storage for LocalStorage {
 
                 Ok(res)
             }
-            Err(e) => {
-                panic!("Could not list files {} with error: {}", self.path, e);
-            }
+            Err(e) => Err(format!(
+                "Could not list files {} with error: {}",
+                self.path, e
+            )),
         }
     }
 }
