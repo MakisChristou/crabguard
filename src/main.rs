@@ -1,3 +1,4 @@
+use bincode::de;
 use ring::aead::NONCE_LEN;
 use ring::error::Unspecified;
 use serde::Deserialize;
@@ -7,6 +8,7 @@ use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::Path;
+use storage::local;
 
 use crate::args::{Cli, Commands};
 use storage::local::LocalStorage;
@@ -23,7 +25,7 @@ struct Data {
     filenames: HashMap<String, Vec<u8>>,
 }
 
-fn encrypt_and_upload_data_chunk(
+fn encrypt_and_upload_data_file(
     data: &Vec<u8>,
     file_name: &str,
     key_bytes: Vec<u8>,
@@ -46,7 +48,7 @@ fn encrypt_and_upload_data_chunk(
     Ok(())
 }
 
-fn encrypt_and_upload_name_chunk(
+fn encrypt_and_upload_name_file(
     file_name: &OsStr,
     filenames: &mut HashMap<String, Vec<u8>>,
     key_bytes: Vec<u8>,
@@ -77,6 +79,31 @@ fn encrypt_and_upload_name_chunk(
     Ok(())
 }
 
+fn download_and_decrypt_file(
+    file_name: &OsStr,
+    key_bytes: Vec<u8>,
+    storage: &impl Storage,
+) -> Result<Vec<u8>, Unspecified> {
+    let file_contents = storage
+        .download(&format!(
+            "{}",
+            hex::encode(Sha256::digest(file_name.to_str().unwrap()))
+        ))
+        .unwrap();
+
+    // Extract nonce from first 12 bytes of file
+    let starting_value = &file_contents[..NONCE_LEN];
+    let nonce_array: [u8; NONCE_LEN] = starting_value.try_into().unwrap();
+    let nonce_sequence = CounterNonceSequence::new(nonce_array);
+
+    // Extract actual cyphertext
+    let cypher_text_with_tag = &file_contents[NONCE_LEN..];
+
+    let decrypted_data = utils::decrypt(cypher_text_with_tag.to_vec(), key_bytes, nonce_sequence)?;
+
+    Ok(decrypted_data)
+}
+
 fn main() -> Result<(), Unspecified> {
     let key_bytes = utils::get_key_from_env_or_generate_new();
 
@@ -95,12 +122,12 @@ fn main() -> Result<(), Unspecified> {
         Some(Commands::Upload { file_path }) => {
             let data = fs::read(file_path).unwrap();
 
-            encrypt_and_upload_data_chunk(&data, &file_path, key_bytes.clone(), &local_storage)?;
+            encrypt_and_upload_data_file(&data, &file_path, key_bytes.clone(), &local_storage)?;
 
             let path = Path::new(file_path);
 
             if let Some(file_name) = path.file_name() {
-                encrypt_and_upload_name_chunk(
+                encrypt_and_upload_name_file(
                     file_name,
                     &mut filenames,
                     key_bytes.clone(),
@@ -112,26 +139,16 @@ fn main() -> Result<(), Unspecified> {
         }
         Some(Commands::Download { file_name }) => {
             let path = Path::new(file_name);
+
             if let Some(file_name) = path.file_name() {
-                let file_contents = local_storage
-                    .download(&format!(
-                        "{}",
-                        hex::encode(Sha256::digest(file_name.to_str().unwrap()))
-                    ))
-                    .unwrap();
-
-                // Extract nonce from first 12 bytes of file
-                let starting_value = &file_contents[..NONCE_LEN];
-                let nonce_array: [u8; NONCE_LEN] = starting_value.try_into().unwrap();
-                let nonce_sequence = CounterNonceSequence::new(nonce_array);
-
-                // Extract actual cyphertext
-                let cypher_text_with_tag = &file_contents[NONCE_LEN..];
-
-                let decrypted_data =
-                    utils::decrypt(cypher_text_with_tag.to_vec(), key_bytes, nonce_sequence)?;
-
-                fs::write(file_name, decrypted_data).unwrap();
+                match download_and_decrypt_file(file_name, key_bytes.clone(), &local_storage) {
+                    Ok(decrypted_data) => {
+                        fs::write(file_name, decrypted_data).unwrap();
+                    }
+                    Err(e) => {
+                        panic!("{}", e);
+                    }
+                }
             } else {
                 panic!("Path given does not contain filename");
             }
