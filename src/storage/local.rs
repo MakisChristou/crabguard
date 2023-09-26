@@ -31,8 +31,7 @@ impl Storage for LocalStorage {
             Ok(data) => Ok(data),
             Err(e) => Err(format!(
                 "Could not download file {} with error: {}",
-                format!("{}/{}", self.path, filename),
-                e
+                filename, e
             )),
         }
     }
@@ -42,8 +41,7 @@ impl Storage for LocalStorage {
             Ok(_) => Ok(()),
             Err(e) => Err(format!(
                 "Could not delete file {} with error: {}",
-                format!("{}/{}", self.path, filename),
-                e
+                filename, e
             )),
         }
     }

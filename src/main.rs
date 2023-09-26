@@ -1,4 +1,3 @@
-use bincode::de;
 use ring::aead::NONCE_LEN;
 use ring::error::Unspecified;
 use serde::Deserialize;
@@ -7,8 +6,8 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs;
+use std::hash;
 use std::path::Path;
-use storage::local;
 
 use crate::args::{Cli, Commands};
 use storage::local::LocalStorage;
@@ -27,21 +26,21 @@ struct Data {
 
 fn encrypt_and_upload_data_file(
     data: &Vec<u8>,
-    file_name: &str,
+    file_name: &OsStr,
     key_bytes: Vec<u8>,
     storage: &impl Storage,
 ) -> Result<(), Unspecified> {
     let nonce_sequence = CounterNonceSequence::new_random();
     let starting_value = nonce_sequence.0.to_vec();
 
-    let cypher_text_with_tag = utils::encrypt(data.clone(), key_bytes.clone(), nonce_sequence)?;
+    let cypher_text_with_tag = utils::encrypt(data.to_owned(), key_bytes.clone(), nonce_sequence)?;
 
     // Prepend the nonce on the ciphertext
     let mut data_to_store = starting_value;
     data_to_store.extend_from_slice(&cypher_text_with_tag);
 
-    let plaintext_filename = file_name;
-    let hashed_filename = format!("{}", hex::encode(Sha256::digest(&plaintext_filename)));
+    let plaintext_filename = file_name.to_str().unwrap();
+    let hashed_filename = hex::encode(Sha256::digest(plaintext_filename)).to_string();
 
     storage.upload(&hashed_filename, &data_to_store).unwrap();
 
@@ -55,10 +54,10 @@ fn encrypt_and_upload_name_file(
     storage: &impl Storage,
 ) -> Result<(), Unspecified> {
     let plaintext_filename = file_name.to_str().unwrap();
-    let hashed_filename = format!("{}", hex::encode(Sha256::digest(&plaintext_filename)));
+    let hashed_filename = hex::encode(Sha256::digest(plaintext_filename)).to_string();
 
     // Update the HashMap
-    let starting_value = &Sha256::digest(&plaintext_filename)[..NONCE_LEN];
+    let starting_value = &Sha256::digest(plaintext_filename)[..NONCE_LEN];
 
     let nonce_array: [u8; NONCE_LEN] = starting_value.try_into().unwrap();
     let nonce_sequence = CounterNonceSequence::new(nonce_array);
@@ -69,7 +68,7 @@ fn encrypt_and_upload_name_file(
     )?;
     // Update the HashMap in RAM
     let mut name_blob: Vec<u8> = Vec::new();
-    name_blob.extend_from_slice(&starting_value);
+    name_blob.extend_from_slice(starting_value);
     name_blob.extend_from_slice(&encrypted_name);
     filenames.insert(hashed_filename, name_blob);
 
@@ -85,10 +84,7 @@ fn download_and_decrypt_file(
     storage: &impl Storage,
 ) -> Result<Vec<u8>, Unspecified> {
     let file_contents = storage
-        .download(&format!(
-            "{}",
-            hex::encode(Sha256::digest(file_name.to_str().unwrap()))
-        ))
+        .download(&hex::encode(Sha256::digest(file_name.to_str().unwrap())).to_string())
         .unwrap();
 
     // Extract nonce from first 12 bytes of file
@@ -122,11 +118,10 @@ fn main() -> Result<(), Unspecified> {
         Some(Commands::Upload { file_path }) => {
             let data = fs::read(file_path).unwrap();
 
-            encrypt_and_upload_data_file(&data, &file_path, key_bytes.clone(), &local_storage)?;
-
             let path = Path::new(file_path);
 
             if let Some(file_name) = path.file_name() {
+                encrypt_and_upload_data_file(&data, file_name, key_bytes.clone(), &local_storage)?;
                 encrypt_and_upload_name_file(
                     file_name,
                     &mut filenames,
@@ -157,10 +152,7 @@ fn main() -> Result<(), Unspecified> {
             let path = Path::new(file_name);
             if let Some(file_name) = path.file_name() {
                 local_storage
-                    .delete(&format!(
-                        "{}",
-                        hex::encode(Sha256::digest(file_name.to_str().unwrap()))
-                    ))
+                    .delete(&hex::encode(Sha256::digest(file_name.to_str().unwrap())).to_string())
                     .unwrap();
             } else {
                 panic!("Path given does not contain filename");
@@ -172,22 +164,18 @@ fn main() -> Result<(), Unspecified> {
                 files.iter().filter(|&file| file != HASHMAP_NAME).collect();
 
             for filename in filtered_files {
-                let name_blob = filenames.get(filename).unwrap();
+                if let Some(name_blob) = filenames.get(filename) {
+                    let starting_value: Vec<u8> = name_blob[..NONCE_LEN].try_into().unwrap();
+                    let nonce_array: [u8; NONCE_LEN] = starting_value.try_into().unwrap();
+                    let nonce_sequence = CounterNonceSequence::new(nonce_array);
 
-                let starting_value: Vec<u8> = name_blob[..NONCE_LEN].try_into().unwrap();
-                let nonce_array: [u8; NONCE_LEN] = starting_value.try_into().unwrap();
-                let nonce_sequence = CounterNonceSequence::new(nonce_array);
+                    let encrypted_name: Vec<u8> = name_blob[NONCE_LEN..].try_into().unwrap();
 
-                let encrypted_name: Vec<u8> = name_blob[NONCE_LEN..].try_into().unwrap();
+                    let decrypted_name =
+                        utils::decrypt(encrypted_name, key_bytes.clone(), nonce_sequence).unwrap();
 
-                let decrypted_name = utils::decrypt(
-                    encrypted_name.try_into().unwrap(),
-                    key_bytes.clone(),
-                    nonce_sequence,
-                )
-                .unwrap();
-
-                println!("{}", String::from_utf8(decrypted_name).unwrap());
+                    println!("{}", String::from_utf8(decrypted_name).unwrap());
+                }
             }
         }
 

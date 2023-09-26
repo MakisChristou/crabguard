@@ -107,24 +107,22 @@ pub fn decrypt(
 
 pub fn get_key_from_env_or_generate_new() -> Vec<u8> {
     dotenv().ok();
-    let key_bytes = match env::var("AES_KEY") {
+    match env::var("AES_KEY") {
         Ok(value) => hex::decode(value).expect("Decoding failed"),
         Err(_) => {
             let key = create_random_aes_key();
             write_key_to_env_file(&key);
             key
         }
-    };
-    return key_bytes;
+    }
 }
 
 pub fn get_local_dir_from_env() -> String {
     dotenv().ok();
-    let local_directory = match env::var("LOCAL_DIR") {
+    match env::var("LOCAL_DIR") {
         Ok(value) => value,
         Err(_) => String::from("crabguard_files"),
-    };
-    local_directory
+    }
 }
 
 pub fn create_dir_if_not_exist(local_directory: String) {
