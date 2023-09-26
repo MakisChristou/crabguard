@@ -6,7 +6,6 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs;
-use std::hash;
 use std::path::Path;
 
 use crate::args::{Cli, Commands};
@@ -19,6 +18,8 @@ mod args;
 mod storage;
 mod utils;
 
+const CHUNK_SIZE: usize = 1024 * 1024 / 4;
+
 #[derive(Serialize, Deserialize, Debug)]
 struct Data {
     filenames: HashMap<String, Vec<u8>>,
@@ -26,7 +27,7 @@ struct Data {
 
 fn encrypt_and_upload_data_file(
     data: &Vec<u8>,
-    file_name: &OsStr,
+    plaintext_filename: &str,
     key_bytes: Vec<u8>,
     storage: &impl Storage,
 ) -> Result<(), Unspecified> {
@@ -39,7 +40,6 @@ fn encrypt_and_upload_data_file(
     let mut data_to_store = starting_value;
     data_to_store.extend_from_slice(&cypher_text_with_tag);
 
-    let plaintext_filename = file_name.to_str().unwrap();
     let hashed_filename = hex::encode(Sha256::digest(plaintext_filename)).to_string();
 
     storage.upload(&hashed_filename, &data_to_store).unwrap();
@@ -48,12 +48,11 @@ fn encrypt_and_upload_data_file(
 }
 
 fn encrypt_and_upload_file_name(
-    file_name: &OsStr,
+    plaintext_filename: &str,
     filenames: &mut HashMap<String, Vec<u8>>,
     key_bytes: Vec<u8>,
     storage: &impl Storage,
 ) -> Result<(), Unspecified> {
-    let plaintext_filename = file_name.to_str().unwrap();
     let hashed_filename = hex::encode(Sha256::digest(plaintext_filename)).to_string();
 
     // Update the HashMap
@@ -79,13 +78,13 @@ fn encrypt_and_upload_file_name(
 }
 
 fn download_and_decrypt_file(
-    file_name: &OsStr,
+    plaintext_filename: &str,
     key_bytes: Vec<u8>,
     storage: &impl Storage,
 ) -> Result<Vec<u8>, Unspecified> {
     let file_contents = storage
-        .download(&hex::encode(Sha256::digest(file_name.to_str().unwrap())).to_string())
-        .unwrap();
+        .download(&hex::encode(Sha256::digest(plaintext_filename)).to_string())
+        .map_err(|_| Unspecified)?;
 
     // Extract nonce from first 12 bytes of file
     let starting_value = &file_contents[..NONCE_LEN];
@@ -112,22 +111,36 @@ fn main() -> Result<(), Unspecified> {
     let mut filenames: HashMap<String, Vec<u8>> =
         utils::get_filenames_from_storage(local_storage.clone());
 
-    let cli = Cli::parse_arguments();
-
-    match &cli.command {
+    match &Cli::parse_arguments().command {
         Some(Commands::Upload { file_path }) => {
             let data = fs::read(file_path).unwrap();
 
             let path = Path::new(file_path);
 
             if let Some(file_name) = path.file_name() {
-                encrypt_and_upload_data_file(&data, file_name, key_bytes.clone(), &local_storage)?;
-                encrypt_and_upload_file_name(
-                    file_name,
-                    &mut filenames,
-                    key_bytes.clone(),
-                    &local_storage,
-                )?;
+                let plaintext_filename = file_name.to_str().unwrap();
+
+                let num_chunks = (data.len() + CHUNK_SIZE - 1) / CHUNK_SIZE;
+
+                for chunk in 0..num_chunks {
+                    let start = chunk * CHUNK_SIZE;
+                    let end = std::cmp::min(start + CHUNK_SIZE, data.len());
+
+                    let chunk_data = &data[start..end].to_vec();
+
+                    encrypt_and_upload_data_file(
+                        chunk_data,
+                        &format!("{}_{}", plaintext_filename, chunk),
+                        key_bytes.clone(),
+                        &local_storage,
+                    )?;
+                    encrypt_and_upload_file_name(
+                        &format!("{}_{}", plaintext_filename, chunk),
+                        &mut filenames,
+                        key_bytes.clone(),
+                        &local_storage,
+                    )?;
+                }
             } else {
                 panic!("Path given does not contain filename");
             }
@@ -136,13 +149,30 @@ fn main() -> Result<(), Unspecified> {
             let path = Path::new(file_name);
 
             if let Some(file_name) = path.file_name() {
-                match download_and_decrypt_file(file_name, key_bytes.clone(), &local_storage) {
-                    Ok(decrypted_data) => {
-                        fs::write(file_name, decrypted_data).unwrap();
+                let plaintext_filename = file_name.to_str().unwrap();
+
+                let mut complete_plaintext: Vec<u8> = Vec::new();
+                let mut chunk = 0;
+
+                loop {
+                    match download_and_decrypt_file(
+                        &format!("{}_{}", plaintext_filename, chunk),
+                        key_bytes.clone(),
+                        &local_storage,
+                    ) {
+                        Ok(mut decrypted_data) => {
+                            complete_plaintext.append(&mut decrypted_data);
+                        }
+                        Err(e) => {
+                            if chunk != 0 {
+                                fs::write(file_name, complete_plaintext.clone()).unwrap();
+                                break;
+                            } else {
+                                panic!("{}", e);
+                            }
+                        }
                     }
-                    Err(e) => {
-                        panic!("{}", e);
-                    }
+                    chunk += 1;
                 }
             } else {
                 panic!("Path given does not contain filename");
