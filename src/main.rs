@@ -47,7 +47,7 @@ fn encrypt_and_upload_data_file(
     Ok(())
 }
 
-fn encrypt_and_upload_name_file(
+fn encrypt_and_upload_file_name(
     file_name: &OsStr,
     filenames: &mut HashMap<String, Vec<u8>>,
     key_bytes: Vec<u8>,
@@ -122,7 +122,7 @@ fn main() -> Result<(), Unspecified> {
 
             if let Some(file_name) = path.file_name() {
                 encrypt_and_upload_data_file(&data, file_name, key_bytes.clone(), &local_storage)?;
-                encrypt_and_upload_name_file(
+                encrypt_and_upload_file_name(
                     file_name,
                     &mut filenames,
                     key_bytes.clone(),
