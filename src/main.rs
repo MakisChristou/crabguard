@@ -99,6 +99,37 @@ fn download_and_decrypt_file(
     Ok(decrypted_data)
 }
 
+fn get_unique_filenames(
+    filenames: &HashMap<String, Vec<u8>>,
+    files: &Vec<String>,
+    key_bytes: Vec<u8>,
+) -> HashSet<String> {
+    let filtered_files: Vec<_> = files.iter().filter(|&file| file != HASHMAP_NAME).collect();
+    let mut file_names = HashSet::new();
+
+    for filename in filtered_files {
+        if let Some(name_blob) = filenames.get(filename) {
+            let starting_value: Vec<u8> = name_blob[..NONCE_LEN].try_into().unwrap();
+            let nonce_array: [u8; NONCE_LEN] = starting_value.try_into().unwrap();
+            let nonce_sequence = CounterNonceSequence::new(nonce_array);
+
+            let encrypted_name: Vec<u8> = name_blob[NONCE_LEN..].try_into().unwrap();
+
+            let decrypted_name =
+                utils::decrypt(encrypted_name, key_bytes.clone(), nonce_sequence).unwrap();
+
+            let s = String::from_utf8(decrypted_name).unwrap();
+            let mut parts = s.rsplitn(2, '_');
+
+            let _number = parts.next().unwrap_or_default().to_string();
+            let filename = parts.next().unwrap_or(&s).to_string();
+
+            file_names.insert(filename);
+        }
+    }
+    file_names
+}
+
 fn main() -> Result<(), Unspecified> {
     let key_bytes = utils::get_key_from_env_or_generate_new();
 
@@ -190,34 +221,11 @@ fn main() -> Result<(), Unspecified> {
         }
         Some(Commands::List {}) => {
             let files = local_storage.list().unwrap();
-            let filtered_files: Vec<_> =
-                files.iter().filter(|&file| file != HASHMAP_NAME).collect();
 
-            let mut file_names = HashSet::new();
+            let unique_file_names = get_unique_filenames(&filenames, &files, key_bytes);
 
-            for filename in filtered_files {
-                if let Some(name_blob) = filenames.get(filename) {
-                    let starting_value: Vec<u8> = name_blob[..NONCE_LEN].try_into().unwrap();
-                    let nonce_array: [u8; NONCE_LEN] = starting_value.try_into().unwrap();
-                    let nonce_sequence = CounterNonceSequence::new(nonce_array);
-
-                    let encrypted_name: Vec<u8> = name_blob[NONCE_LEN..].try_into().unwrap();
-
-                    let decrypted_name =
-                        utils::decrypt(encrypted_name, key_bytes.clone(), nonce_sequence).unwrap();
-
-                    let s = String::from_utf8(decrypted_name).unwrap();
-                    let mut parts = s.rsplitn(2, '_');
-
-                    let _number = parts.next().unwrap_or_default().to_string();
-                    let filename = parts.next().unwrap_or(&s).to_string();
-
-                    file_names.insert(filename);
-                }
-            }
-
-            for f in file_names {
-                println!("{}", f);
+            for filename in unique_file_names {
+                println!("{}", filename);
             }
         }
 
