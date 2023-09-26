@@ -2,6 +2,7 @@ use std::fs;
 
 use super::Storage;
 
+#[derive(Clone)]
 pub struct LocalStorage {
     path: String,
 }

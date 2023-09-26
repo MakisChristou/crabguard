@@ -1,25 +1,21 @@
-use bincode::de;
-use dotenv::dotenv;
 use ring::aead::NONCE_LEN;
 use ring::error::Unspecified;
 use serde::Deserialize;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::env;
 use std::fs;
 use std::path::Path;
+
+use crate::args::{Cli, Commands};
 use storage::local::LocalStorage;
 use storage::Storage;
 use utils::CounterNonceSequence;
-
-use crate::args::{Cli, Commands};
+use utils::HASHMAP_NAME;
 
 mod args;
 mod storage;
 mod utils;
-
-const FILENAMES_HASHMAP: &str = "filenames.bin";
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Data {
@@ -27,44 +23,16 @@ struct Data {
 }
 
 fn main() -> Result<(), Unspecified> {
-    dotenv().ok();
-    let key_bytes = match env::var("AES_KEY") {
-        Ok(value) => hex::decode(value).expect("Decoding failed"),
-        Err(_) => {
-            let key = utils::create_random_aes_key();
-            utils::write_key_to_env_file(&key);
-            key
-        }
-    };
+    let key_bytes = utils::get_key_from_env_or_generate_new();
 
-    let local_directory = match env::var("LOCAL_DIR") {
-        Ok(value) => value,
-        Err(_) => String::from("crabguard_files"),
-    };
+    let local_directory = utils::get_local_dir_from_env();
 
-    let path = std::path::Path::new(&local_directory);
-    if !path.exists() {
-        if let Err(e) = fs::create_dir_all(path) {
-            panic!("Failed to create directory: {:?}", e);
-        }
-    }
+    utils::create_dir_if_not_exist(local_directory.clone());
+
     let local_storage = LocalStorage::new(&local_directory);
 
-    let mut filenames: HashMap<String, Vec<u8>>;
-
-    // Read filenames from storage
-    match local_storage.download(FILENAMES_HASHMAP) {
-        Ok(encoded) => {
-            filenames = bincode::deserialize(&encoded).unwrap();
-        }
-        Err(_) => {
-            let empty_hashmap = bincode::serialize(&HashMap::<String, Vec<u8>>::new()).unwrap();
-            local_storage
-                .upload(FILENAMES_HASHMAP, &empty_hashmap)
-                .unwrap();
-            filenames = HashMap::<String, Vec<u8>>::new()
-        }
-    }
+    let mut filenames: HashMap<String, Vec<u8>> =
+        utils::get_filenames_from_storage(local_storage.clone());
 
     let cli = Cli::parse_arguments();
 
@@ -110,7 +78,7 @@ fn main() -> Result<(), Unspecified> {
                 filenames.insert(hashed_filename, name_blob);
 
                 let encoded: Vec<u8> = bincode::serialize(&filenames).unwrap();
-                local_storage.upload(FILENAMES_HASHMAP, &encoded).unwrap();
+                local_storage.upload(HASHMAP_NAME, &encoded).unwrap();
             } else {
                 panic!("Path given does not contain filename");
             }
@@ -156,10 +124,8 @@ fn main() -> Result<(), Unspecified> {
         }
         Some(Commands::List {}) => {
             let files = local_storage.list().unwrap();
-            let filtered_files: Vec<_> = files
-                .iter()
-                .filter(|&file| file != FILENAMES_HASHMAP)
-                .collect();
+            let filtered_files: Vec<_> =
+                files.iter().filter(|&file| file != HASHMAP_NAME).collect();
 
             for filename in filtered_files {
                 let name_blob = filenames.get(filename).unwrap();

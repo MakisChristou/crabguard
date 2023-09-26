@@ -1,3 +1,4 @@
+use dotenv::dotenv;
 use rand::Rng;
 use ring::aead::Aad;
 use ring::aead::BoundKey;
@@ -8,11 +9,18 @@ use ring::aead::SealingKey;
 use ring::aead::UnboundKey;
 use ring::aead::AES_256_GCM;
 use ring::aead::NONCE_LEN;
+use std::collections::HashMap;
+use std::env;
+use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
 
 use ring::error::Unspecified;
 use ring::rand::{SecureRandom, SystemRandom};
+
+use crate::storage::Storage;
+
+pub const HASHMAP_NAME: &str = "filenames.bin";
 
 pub struct CounterNonceSequence(pub [u8; NONCE_LEN]);
 
@@ -97,6 +105,48 @@ pub fn decrypt(
     Ok(decrypted_data.to_vec())
 }
 
+pub fn get_key_from_env_or_generate_new() -> Vec<u8> {
+    dotenv().ok();
+    let key_bytes = match env::var("AES_KEY") {
+        Ok(value) => hex::decode(value).expect("Decoding failed"),
+        Err(_) => {
+            let key = create_random_aes_key();
+            write_key_to_env_file(&key);
+            key
+        }
+    };
+    return key_bytes;
+}
+
+pub fn get_local_dir_from_env() -> String {
+    dotenv().ok();
+    let local_directory = match env::var("LOCAL_DIR") {
+        Ok(value) => value,
+        Err(_) => String::from("crabguard_files"),
+    };
+    local_directory
+}
+
+pub fn create_dir_if_not_exist(local_directory: String) {
+    let path = std::path::Path::new(&local_directory);
+    if !path.exists() {
+        if let Err(e) = fs::create_dir_all(path) {
+            panic!("Failed to create directory: {:?}", e);
+        }
+    }
+}
+
+pub fn get_filenames_from_storage(storage: impl Storage) -> HashMap<String, Vec<u8>> {
+    match storage.download(HASHMAP_NAME) {
+        Ok(encoded) => bincode::deserialize(&encoded).unwrap(),
+        Err(_) => {
+            let empty_hashmap = bincode::serialize(&HashMap::<String, Vec<u8>>::new()).unwrap();
+            storage.upload(HASHMAP_NAME, &empty_hashmap).unwrap();
+            HashMap::<String, Vec<u8>>::new()
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::{create_random_aes_key, decrypt, encrypt, CounterNonceSequence};
@@ -143,11 +193,4 @@ mod test {
             }
         };
     }
-}
-
-pub fn usize_to_u8_2(value: usize) -> [u8; 2] {
-    if value > 65535 {
-        panic!("Value too large to fit in 2 bytes");
-    }
-    [(value >> 8) as u8, (value & 0xFF) as u8]
 }
