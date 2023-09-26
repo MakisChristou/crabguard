@@ -4,7 +4,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::ffi::OsStr;
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
@@ -193,6 +193,8 @@ fn main() -> Result<(), Unspecified> {
             let filtered_files: Vec<_> =
                 files.iter().filter(|&file| file != HASHMAP_NAME).collect();
 
+            let mut file_names = HashSet::new();
+
             for filename in filtered_files {
                 if let Some(name_blob) = filenames.get(filename) {
                     let starting_value: Vec<u8> = name_blob[..NONCE_LEN].try_into().unwrap();
@@ -204,8 +206,18 @@ fn main() -> Result<(), Unspecified> {
                     let decrypted_name =
                         utils::decrypt(encrypted_name, key_bytes.clone(), nonce_sequence).unwrap();
 
-                    println!("{}", String::from_utf8(decrypted_name).unwrap());
+                    let s = String::from_utf8(decrypted_name).unwrap();
+                    let mut parts = s.rsplitn(2, '_');
+
+                    let _number = parts.next().unwrap_or_default().to_string();
+                    let filename = parts.next().unwrap_or(&s).to_string();
+
+                    file_names.insert(filename);
                 }
+            }
+
+            for f in file_names {
+                println!("{}", f);
             }
         }
 
