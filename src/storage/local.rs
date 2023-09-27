@@ -64,4 +64,8 @@ impl Storage for LocalStorage {
             )),
         }
     }
+
+    async fn size_of(&self, filename: &str) -> Result<i64, String> {
+        todo!()
+    }
 }

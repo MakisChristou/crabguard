@@ -9,4 +9,5 @@ pub trait Storage {
     async fn download(&self, filename: &str) -> Result<Vec<u8>, String>;
     async fn delete(&self, filename: &str) -> Result<(), String>;
     async fn list(&self) -> Result<Vec<String>, String>;
+    async fn size_of(&self, filename: &str) -> Result<i64, String>;
 }

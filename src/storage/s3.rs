@@ -109,4 +109,29 @@ impl Storage for S3Storage {
             Err(e) => Err(format!("Could not list files {}", e)),
         }
     }
+
+    async fn size_of(&self, filename: &str) -> Result<i64, String> {
+        // List all files in a bucket
+        let list_req = ListObjectsV2Request {
+            bucket: self.bucket_name.to_string(),
+            ..Default::default()
+        };
+
+        match self.s3_client.list_objects_v2(list_req).await {
+            Ok(output) => {
+                if let Some(objects) = output.contents {
+                    for object in objects {
+                        if let Some(key) = object.key {
+                            let size = object.size.unwrap_or(0);
+                            return Ok(size);
+                        }
+                    }
+                    Err(format!("File not found"))
+                } else {
+                    Err(format!("Could not get file size"))
+                }
+            }
+            Err(e) => Err(format!("Could not get file size {}", e)),
+        }
+    }
 }
