@@ -16,6 +16,7 @@ clap = { version = "4.4.4", features = ["derive"] }
 dotenv = "0.15.0"
 futures-util = "0.3.28"
 hex = "0.4.3"
+indicatif = "0.17.7"
 rand = "0.8.5"
 ring = "0.16.20"
 rusoto_core = "0.48.0"

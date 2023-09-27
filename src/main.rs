@@ -1,3 +1,5 @@
+use indicatif::ProgressBar;
+use indicatif::ProgressStyle;
 use ring::aead::NONCE_LEN;
 use ring::error::Unspecified;
 use rusoto_core::Region;
@@ -8,6 +10,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
+use std::time::Instant;
 use storage::s3::S3Storage;
 
 use crate::args::{Cli, Commands};
@@ -104,6 +107,28 @@ async fn download_and_decrypt_file(
     Ok(decrypted_data)
 }
 
+async fn get_total_file_size(
+    filenames: &HashMap<String, Vec<u8>>,
+    files: &Vec<String>,
+    plaintext_filename: &str,
+    key_bytes: Vec<u8>,
+    storage: &impl Storage,
+) -> Result<i64, Unspecified> {
+    let filenames = get_all_filenames_of(plaintext_filename, filenames, files, key_bytes);
+    let mut total_size = 0;
+
+    for filename in filenames {
+        let file_size = storage
+            .size_of(&hex::encode(Sha256::digest(filename)).to_string())
+            .await
+            .map_err(|_| Unspecified)?;
+
+        total_size += file_size;
+    }
+
+    Ok(total_size)
+}
+
 fn get_unique_filenames(
     filenames: &HashMap<String, Vec<u8>>,
     files: &Vec<String>,
@@ -135,6 +160,36 @@ fn get_unique_filenames(
     file_names
 }
 
+fn get_all_filenames_of(
+    plaintext_filename: &str,
+    filenames: &HashMap<String, Vec<u8>>,
+    files: &Vec<String>,
+    key_bytes: Vec<u8>,
+) -> HashSet<String> {
+    let filtered_files: Vec<_> = files.iter().filter(|&file| file != HASHMAP_NAME).collect();
+    let mut file_names = HashSet::new();
+
+    for filename in filtered_files {
+        if let Some(name_blob) = filenames.get(filename) {
+            let starting_value: Vec<u8> = name_blob[..NONCE_LEN].try_into().unwrap();
+            let nonce_array: [u8; NONCE_LEN] = starting_value.try_into().unwrap();
+            let nonce_sequence = CounterNonceSequence::new(nonce_array);
+
+            let encrypted_name: Vec<u8> = name_blob[NONCE_LEN..].try_into().unwrap();
+
+            let decrypted_name =
+                utils::decrypt(encrypted_name, key_bytes.clone(), nonce_sequence).unwrap();
+
+            let s = String::from_utf8(decrypted_name).unwrap();
+
+            if s.starts_with(plaintext_filename) {
+                file_names.insert(filename.to_string());
+            }
+        }
+    }
+    file_names
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Unspecified> {
     let key_bytes = utils::get_key_from_env_or_generate_new();
@@ -155,18 +210,23 @@ async fn main() -> Result<(), Unspecified> {
     match &Cli::parse_arguments().command {
         Some(Commands::Upload { file_path }) => {
             let data = fs::read(file_path).unwrap();
-
             let path = Path::new(file_path);
 
             if let Some(file_name) = path.file_name() {
                 let plaintext_filename = file_name.to_str().unwrap();
-
                 let num_chunks = (data.len() + CHUNK_SIZE - 1) / CHUNK_SIZE;
+
+                // Initialize the progress bar
+                let pb = ProgressBar::new(num_chunks as u64);
+                pb.set_style(ProgressStyle::default_bar()
+                    .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}").unwrap()
+                    .progress_chars("#>-"));
+
+                let start_time = Instant::now();
 
                 for chunk in 0..num_chunks {
                     let start = chunk * CHUNK_SIZE;
                     let end = std::cmp::min(start + CHUNK_SIZE, data.len());
-
                     let chunk_data = &data[start..end].to_vec();
 
                     encrypt_and_upload_data_file(
@@ -183,7 +243,16 @@ async fn main() -> Result<(), Unspecified> {
                         &backblaze_storage,
                     )
                     .await?;
+
+                    // Update the progress bar
+                    pb.inc(1);
+
+                    let elapsed_time = start_time.elapsed().as_secs_f64();
+                    let speed = (CHUNK_SIZE as f64 / 1024.0) / elapsed_time; // KB/s
+                    pb.set_message(format!("{:.2} KB/s", speed));
                 }
+
+                pb.finish_with_message("upload complete");
             } else {
                 panic!("Path given does not contain filename");
             }
@@ -195,11 +264,31 @@ async fn main() -> Result<(), Unspecified> {
                 let plaintext_filename = file_name.to_str().unwrap();
 
                 let mut complete_plaintext: Vec<u8> = Vec::new();
-                let mut chunk = 0;
+                let mut current_chunk = 0;
+
+                let files = backblaze_storage.list().await.unwrap();
+                let total_size = get_total_file_size(
+                    &filenames,
+                    &files,
+                    plaintext_filename,
+                    key_bytes.clone(),
+                    &backblaze_storage,
+                )
+                .await;
+
+                let num_chunks = total_size.unwrap() / CHUNK_SIZE as i64;
+
+                // Initialize the progress bar
+                let pb = ProgressBar::new(num_chunks as u64);
+                pb.set_style(ProgressStyle::default_bar()
+                    .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}").unwrap()
+                    .progress_chars("#>-"));
+
+                let start_time = Instant::now();
 
                 loop {
                     match download_and_decrypt_file(
-                        &format!("{}_{}", plaintext_filename, chunk),
+                        &format!("{}_{}", plaintext_filename, current_chunk),
                         key_bytes.clone(),
                         &backblaze_storage,
                     )
@@ -207,9 +296,16 @@ async fn main() -> Result<(), Unspecified> {
                     {
                         Ok(mut decrypted_data) => {
                             complete_plaintext.append(&mut decrypted_data);
+
+                            // Update the progress bar
+                            pb.inc(1);
+
+                            let elapsed_time = start_time.elapsed().as_secs_f64();
+                            let speed = (CHUNK_SIZE as f64 / 1024.0) / elapsed_time; // KB/s
+                            pb.set_message(format!("{:.2} KB/s", speed));
                         }
                         Err(e) => {
-                            if chunk != 0 {
+                            if current_chunk != 0 {
                                 fs::write(file_name, complete_plaintext.clone()).unwrap();
                                 break;
                             } else {
@@ -217,7 +313,8 @@ async fn main() -> Result<(), Unspecified> {
                             }
                         }
                     }
-                    chunk += 1;
+
+                    current_chunk += 1;
                 }
             } else {
                 panic!("Path given does not contain filename");
