@@ -134,12 +134,12 @@ pub fn create_dir_if_not_exist(local_directory: String) {
     }
 }
 
-pub fn get_filenames_from_storage(storage: impl Storage) -> HashMap<String, Vec<u8>> {
-    match storage.download(HASHMAP_NAME) {
+pub async fn get_filenames_from_storage(storage: impl Storage) -> HashMap<String, Vec<u8>> {
+    match storage.download(HASHMAP_NAME).await {
         Ok(encoded) => bincode::deserialize(&encoded).unwrap(),
         Err(_) => {
             let empty_hashmap = bincode::serialize(&HashMap::<String, Vec<u8>>::new()).unwrap();
-            storage.upload(HASHMAP_NAME, &empty_hashmap).unwrap();
+            storage.upload(HASHMAP_NAME, &empty_hashmap).await.unwrap();
             HashMap::<String, Vec<u8>>::new()
         }
     }

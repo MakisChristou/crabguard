@@ -1,6 +1,7 @@
 use std::fs;
 
 use super::Storage;
+use async_trait::async_trait;
 
 #[derive(Clone)]
 pub struct LocalStorage {
@@ -15,8 +16,9 @@ impl LocalStorage {
     }
 }
 
+#[async_trait]
 impl Storage for LocalStorage {
-    fn upload(&self, filename: &str, data: &[u8]) -> Result<(), String> {
+    async fn upload(&self, filename: &str, data: &[u8]) -> Result<(), String> {
         match fs::write(format!("{}/{}", &self.path, filename), data) {
             Ok(_) => Ok(()),
             Err(e) => Err(format!(
@@ -26,7 +28,7 @@ impl Storage for LocalStorage {
         }
     }
 
-    fn download(&self, filename: &str) -> Result<Vec<u8>, String> {
+    async fn download(&self, filename: &str) -> Result<Vec<u8>, String> {
         match fs::read(format!("{}/{}", self.path, filename)) {
             Ok(data) => Ok(data),
             Err(e) => Err(format!(
@@ -36,7 +38,7 @@ impl Storage for LocalStorage {
         }
     }
 
-    fn delete(&self, filename: &str) -> Result<(), String> {
+    async fn delete(&self, filename: &str) -> Result<(), String> {
         match fs::remove_file(format!("{}/{}", self.path, filename)) {
             Ok(_) => Ok(()),
             Err(e) => Err(format!(
@@ -46,7 +48,7 @@ impl Storage for LocalStorage {
         }
     }
 
-    fn list(&self) -> Result<Vec<String>, String> {
+    async fn list(&self) -> Result<Vec<String>, String> {
         match fs::read_dir(&self.path) {
             Ok(file_names) => {
                 let res: Vec<String> = file_names

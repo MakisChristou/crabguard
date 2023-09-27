@@ -25,7 +25,7 @@ struct Data {
     filenames: HashMap<String, Vec<u8>>,
 }
 
-fn encrypt_and_upload_data_file(
+async fn encrypt_and_upload_data_file(
     data: &Vec<u8>,
     plaintext_filename: &str,
     key_bytes: Vec<u8>,
@@ -42,12 +42,15 @@ fn encrypt_and_upload_data_file(
 
     let hashed_filename = hex::encode(Sha256::digest(plaintext_filename)).to_string();
 
-    storage.upload(&hashed_filename, &data_to_store).unwrap();
+    storage
+        .upload(&hashed_filename, &data_to_store)
+        .await
+        .unwrap();
 
     Ok(())
 }
 
-fn encrypt_and_upload_file_name(
+async fn encrypt_and_upload_file_name(
     plaintext_filename: &str,
     filenames: &mut HashMap<String, Vec<u8>>,
     key_bytes: Vec<u8>,
@@ -72,18 +75,19 @@ fn encrypt_and_upload_file_name(
     filenames.insert(hashed_filename, name_blob);
 
     let encoded: Vec<u8> = bincode::serialize(&filenames).unwrap();
-    storage.upload(HASHMAP_NAME, &encoded).unwrap();
+    storage.upload(HASHMAP_NAME, &encoded).await.unwrap();
 
     Ok(())
 }
 
-fn download_and_decrypt_file(
+async fn download_and_decrypt_file(
     plaintext_filename: &str,
     key_bytes: Vec<u8>,
     storage: &impl Storage,
 ) -> Result<Vec<u8>, Unspecified> {
     let file_contents = storage
         .download(&hex::encode(Sha256::digest(plaintext_filename)).to_string())
+        .await
         .map_err(|_| Unspecified)?;
 
     // Extract nonce from first 12 bytes of file
@@ -130,7 +134,8 @@ fn get_unique_filenames(
     file_names
 }
 
-fn main() -> Result<(), Unspecified> {
+#[tokio::main]
+async fn main() -> Result<(), Unspecified> {
     let key_bytes = utils::get_key_from_env_or_generate_new();
 
     let local_directory = utils::get_local_dir_from_env();
@@ -140,7 +145,7 @@ fn main() -> Result<(), Unspecified> {
     let local_storage = LocalStorage::new(&local_directory);
 
     let mut filenames: HashMap<String, Vec<u8>> =
-        utils::get_filenames_from_storage(local_storage.clone());
+        utils::get_filenames_from_storage(local_storage.clone()).await;
 
     match &Cli::parse_arguments().command {
         Some(Commands::Upload { file_path }) => {
@@ -164,13 +169,15 @@ fn main() -> Result<(), Unspecified> {
                         &format!("{}_{}", plaintext_filename, chunk),
                         key_bytes.clone(),
                         &local_storage,
-                    )?;
+                    )
+                    .await?;
                     encrypt_and_upload_file_name(
                         &format!("{}_{}", plaintext_filename, chunk),
                         &mut filenames,
                         key_bytes.clone(),
                         &local_storage,
-                    )?;
+                    )
+                    .await?;
                 }
             } else {
                 panic!("Path given does not contain filename");
@@ -190,7 +197,9 @@ fn main() -> Result<(), Unspecified> {
                         &format!("{}_{}", plaintext_filename, chunk),
                         key_bytes.clone(),
                         &local_storage,
-                    ) {
+                    )
+                    .await
+                    {
                         Ok(mut decrypted_data) => {
                             complete_plaintext.append(&mut decrypted_data);
                         }
@@ -214,13 +223,14 @@ fn main() -> Result<(), Unspecified> {
             if let Some(file_name) = path.file_name() {
                 local_storage
                     .delete(&hex::encode(Sha256::digest(file_name.to_str().unwrap())).to_string())
+                    .await
                     .unwrap();
             } else {
                 panic!("Path given does not contain filename");
             }
         }
         Some(Commands::List {}) => {
-            let files = local_storage.list().unwrap();
+            let files = local_storage.list().await.unwrap();
 
             let unique_file_names = get_unique_filenames(&filenames, &files, key_bytes);
 
