@@ -10,10 +10,14 @@ license = "MIT"
 
 [dependencies]
 bincode = "1.3.3"
+bytes = "1.5.0"
 clap = { version = "4.4.4", features = ["derive"] }
 dotenv = "0.15.0"
+futures-util = "0.3.28"
 hex = "0.4.3"
 rand = "0.8.5"
 ring = "0.16.20"
+rusoto_core = "0.48.0"
+rusoto_s3 = "0.48.0"
 serde = { version = "1.0.188", features = ["derive"] }
 sha2 = "0.10.7"
