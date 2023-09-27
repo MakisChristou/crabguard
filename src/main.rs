@@ -1,5 +1,6 @@
 use ring::aead::NONCE_LEN;
 use ring::error::Unspecified;
+use rusoto_core::Region;
 use serde::Deserialize;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -7,9 +8,9 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
+use storage::s3::S3Storage;
 
 use crate::args::{Cli, Commands};
-use storage::local::LocalStorage;
 use storage::Storage;
 use utils::CounterNonceSequence;
 use utils::HASHMAP_NAME;
@@ -18,7 +19,7 @@ mod args;
 mod storage;
 mod utils;
 
-const CHUNK_SIZE: usize = 1024 * 1024 / 4;
+const CHUNK_SIZE: usize = 1024 * 1024;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Data {
@@ -142,10 +143,14 @@ async fn main() -> Result<(), Unspecified> {
 
     utils::create_dir_if_not_exist(local_directory.clone());
 
-    let local_storage = LocalStorage::new(&local_directory);
+    let region = Region::Custom {
+        name: "us-west-004".to_string(),
+        endpoint: "s3.us-west-004.backblazeb2.com".to_string(),
+    };
+    let backblaze_storage = S3Storage::new(region, "crabbucket");
 
     let mut filenames: HashMap<String, Vec<u8>> =
-        utils::get_filenames_from_storage(local_storage.clone()).await;
+        utils::get_filenames_from_storage(backblaze_storage.clone()).await;
 
     match &Cli::parse_arguments().command {
         Some(Commands::Upload { file_path }) => {
@@ -168,14 +173,14 @@ async fn main() -> Result<(), Unspecified> {
                         chunk_data,
                         &format!("{}_{}", plaintext_filename, chunk),
                         key_bytes.clone(),
-                        &local_storage,
+                        &backblaze_storage,
                     )
                     .await?;
                     encrypt_and_upload_file_name(
                         &format!("{}_{}", plaintext_filename, chunk),
                         &mut filenames,
                         key_bytes.clone(),
-                        &local_storage,
+                        &backblaze_storage,
                     )
                     .await?;
                 }
@@ -196,7 +201,7 @@ async fn main() -> Result<(), Unspecified> {
                     match download_and_decrypt_file(
                         &format!("{}_{}", plaintext_filename, chunk),
                         key_bytes.clone(),
-                        &local_storage,
+                        &backblaze_storage,
                     )
                     .await
                     {
@@ -221,7 +226,7 @@ async fn main() -> Result<(), Unspecified> {
         Some(Commands::Delete { file_name }) => {
             let path = Path::new(file_name);
             if let Some(file_name) = path.file_name() {
-                local_storage
+                backblaze_storage
                     .delete(&hex::encode(Sha256::digest(file_name.to_str().unwrap())).to_string())
                     .await
                     .unwrap();
@@ -230,7 +235,7 @@ async fn main() -> Result<(), Unspecified> {
             }
         }
         Some(Commands::List {}) => {
-            let files = local_storage.list().await.unwrap();
+            let files = backblaze_storage.list().await.unwrap();
 
             let unique_file_names = get_unique_filenames(&filenames, &files, key_bytes);
 
