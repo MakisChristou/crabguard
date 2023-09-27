@@ -1,5 +1,3 @@
-use indicatif::ProgressBar;
-use indicatif::ProgressStyle;
 use ring::aead::NONCE_LEN;
 use ring::error::Unspecified;
 use rusoto_core::Region;
@@ -217,11 +215,7 @@ async fn main() -> Result<(), Unspecified> {
                 let num_chunks = (data.len() + CHUNK_SIZE - 1) / CHUNK_SIZE;
 
                 // Initialize the progress bar
-                let pb = ProgressBar::new(num_chunks as u64);
-                pb.set_style(ProgressStyle::default_bar()
-                    .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}").unwrap()
-                    .progress_chars("#>-"));
-
+                let pb = utils::create_progress_bar(num_chunks as u64);
                 let start_time = Instant::now();
 
                 for chunk in 0..num_chunks {
@@ -244,12 +238,7 @@ async fn main() -> Result<(), Unspecified> {
                     )
                     .await?;
 
-                    // Update the progress bar
-                    pb.inc(1);
-
-                    let elapsed_time = start_time.elapsed().as_secs_f64();
-                    let speed = (CHUNK_SIZE as f64 / 1024.0) / elapsed_time; // KB/s
-                    pb.set_message(format!("{:.2} KB/s", speed));
+                    utils::update_progress_bar(&pb, &start_time);
                 }
 
                 pb.finish_with_message("upload complete");
@@ -279,11 +268,7 @@ async fn main() -> Result<(), Unspecified> {
                 let num_chunks = total_size.unwrap() / CHUNK_SIZE as i64;
 
                 // Initialize the progress bar
-                let pb = ProgressBar::new(num_chunks as u64);
-                pb.set_style(ProgressStyle::default_bar()
-                    .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}").unwrap()
-                    .progress_chars("#>-"));
-
+                let pb = utils::create_progress_bar(num_chunks as u64);
                 let start_time = Instant::now();
 
                 loop {
@@ -296,13 +281,7 @@ async fn main() -> Result<(), Unspecified> {
                     {
                         Ok(mut decrypted_data) => {
                             complete_plaintext.append(&mut decrypted_data);
-
-                            // Update the progress bar
-                            pb.inc(1);
-
-                            let elapsed_time = start_time.elapsed().as_secs_f64();
-                            let speed = (CHUNK_SIZE as f64 / 1024.0) / elapsed_time; // KB/s
-                            pb.set_message(format!("{:.2} KB/s", speed));
+                            utils::update_progress_bar(&pb, &start_time);
                         }
                         Err(e) => {
                             if current_chunk != 0 {

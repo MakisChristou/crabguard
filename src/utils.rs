@@ -1,4 +1,6 @@
 use dotenv::dotenv;
+use indicatif::ProgressBar;
+use indicatif::ProgressStyle;
 use rand::Rng;
 use ring::aead::Aad;
 use ring::aead::BoundKey;
@@ -14,11 +16,13 @@ use std::env;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::time::Instant;
 
 use ring::error::Unspecified;
 use ring::rand::{SecureRandom, SystemRandom};
 
 use crate::storage::Storage;
+use crate::CHUNK_SIZE;
 
 pub const HASHMAP_NAME: &str = "filenames.bin";
 
@@ -143,6 +147,21 @@ pub async fn get_filenames_from_storage(storage: impl Storage) -> HashMap<String
             HashMap::<String, Vec<u8>>::new()
         }
     }
+}
+
+pub fn create_progress_bar(num_chunks: u64) -> ProgressBar {
+    let pb = ProgressBar::new(num_chunks);
+    pb.set_style(ProgressStyle::default_bar()
+        .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}").unwrap()
+        .progress_chars("#>-"));
+    pb
+}
+
+pub fn update_progress_bar(pb: &ProgressBar, start_time: &Instant) {
+    pb.inc(1);
+    let elapsed_time = start_time.elapsed().as_secs_f64();
+    let speed = (CHUNK_SIZE as f64 / 1024.0) / elapsed_time; // KB/s
+    pb.set_message(format!("{:.2} KB/s", speed));
 }
 
 #[cfg(test)]
