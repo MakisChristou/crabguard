@@ -52,7 +52,7 @@ async fn encrypt_and_upload_data_file(
     Ok(())
 }
 
-async fn encrypt_and_upload_file_name(
+async fn add_name_to_hashmap(
     plaintext_filename: &str,
     filenames: &mut HashMap<String, Vec<u8>>,
     key_bytes: Vec<u8>,
@@ -75,6 +75,19 @@ async fn encrypt_and_upload_file_name(
     name_blob.extend_from_slice(starting_value);
     name_blob.extend_from_slice(&encrypted_name);
     filenames.insert(hashed_filename, name_blob);
+
+    let encoded: Vec<u8> = bincode::serialize(&filenames).unwrap();
+    storage.upload(HASHMAP_NAME, &encoded).await.unwrap();
+
+    Ok(())
+}
+
+async fn remove_name_from_hashmap(
+    hashed_filename: &str,
+    filenames: &mut HashMap<String, Vec<u8>>,
+    storage: &impl Storage,
+) -> Result<(), Unspecified> {
+    filenames.remove(hashed_filename);
 
     let encoded: Vec<u8> = bincode::serialize(&filenames).unwrap();
     storage.upload(HASHMAP_NAME, &encoded).await.unwrap();
@@ -235,7 +248,8 @@ async fn main() -> Result<(), Unspecified> {
                         &backblaze_storage,
                     )
                     .await?;
-                    encrypt_and_upload_file_name(
+
+                    add_name_to_hashmap(
                         &format!("{}_{}", plaintext_filename, chunk),
                         &mut filenames,
                         key_bytes.clone(),
@@ -307,10 +321,19 @@ async fn main() -> Result<(), Unspecified> {
         Some(Commands::Delete { file_name }) => {
             let path = Path::new(file_name);
             if let Some(file_name) = path.file_name() {
-                backblaze_storage
-                    .delete(&hex::encode(Sha256::digest(file_name.to_str().unwrap())).to_string())
-                    .await
-                    .unwrap();
+                let plaintext_filename = file_name.to_str().unwrap();
+                let files = backblaze_storage.list().await.unwrap();
+                let associated_filenames =
+                    get_all_filenames_of(plaintext_filename, &filenames, &files, key_bytes);
+
+                for filename in associated_filenames {
+                    backblaze_storage
+                        .delete(&filename.to_owned())
+                        .await
+                        .unwrap();
+
+                    remove_name_from_hashmap(&filename, &mut filenames, &backblaze_storage).await?;
+                }
             } else {
                 panic!("Path given does not contain filename");
             }
