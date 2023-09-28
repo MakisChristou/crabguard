@@ -143,16 +143,20 @@ fn get_unique_filenames(
 
             let encrypted_name: Vec<u8> = name_blob[NONCE_LEN..].try_into().unwrap();
 
-            let decrypted_name =
-                utils::decrypt(encrypted_name, key_bytes.clone(), nonce_sequence).unwrap();
+            match utils::decrypt(encrypted_name, key_bytes.clone(), nonce_sequence) {
+                Ok(decrypted_name) => {
+                    let s = String::from_utf8(decrypted_name).unwrap();
+                    let mut parts = s.rsplitn(2, '_');
 
-            let s = String::from_utf8(decrypted_name).unwrap();
-            let mut parts = s.rsplitn(2, '_');
+                    let _number = parts.next().unwrap_or_default().to_string();
+                    let filename = parts.next().unwrap_or(&s).to_string();
 
-            let _number = parts.next().unwrap_or_default().to_string();
-            let filename = parts.next().unwrap_or(&s).to_string();
-
-            file_names.insert(filename);
+                    file_names.insert(filename);
+                }
+                Err(_) => {
+                    panic!("Could not decrypt a filename")
+                }
+            }
         }
     }
     file_names
@@ -316,8 +320,12 @@ async fn main() -> Result<(), Unspecified> {
 
             let unique_file_names = get_unique_filenames(&filenames, &files, key_bytes);
 
-            for filename in unique_file_names {
-                println!("{}", filename);
+            if unique_file_names.is_empty() {
+                println!("Bucket is empty!");
+            } else {
+                for filename in unique_file_names {
+                    println!("{}", filename);
+                }
             }
         }
 

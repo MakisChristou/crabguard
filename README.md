@@ -6,6 +6,19 @@
 - Encrypted filenames
 - File chuking
 
+## Getting started
+Create a `.env` file like so
+
+```
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+AWS_REGION_NAME=us-west-004
+AWS_ENDPOINT=s3.us-west-004.backblazeb2.com
+AWS_BUCKET_NAME=testbucket
+```
+
+When the upload command is run a new key will be generated and stored in your `.env` file. It goes without saying that you should backup this key. If you lose it you can't decrypt your files or even the filenames. 
+
 ## Common Commands
 
 ```bash

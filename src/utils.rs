@@ -70,8 +70,9 @@ pub fn write_key_to_env_file(key: &Vec<u8>) {
         .open(filename)
         .unwrap();
 
-    // Write some content to the file.
-    writeln!(file, "AES_KEY={}", hex::encode(key)).unwrap();
+    println!("No AES_KEY found, generating new one ...");
+    println!("Storing new key to .env file ...");
+    writeln!(file, "\nAES_KEY={}", hex::encode(key)).unwrap();
 }
 
 pub fn encrypt(
