@@ -190,17 +190,18 @@ fn get_all_filenames_of(
 
 #[tokio::main]
 async fn main() -> Result<(), Unspecified> {
+    // Enviroment Variables
     let key_bytes = utils::get_key_from_env_or_generate_new();
-
-    let local_directory = utils::get_local_dir_from_env();
-
-    utils::create_dir_if_not_exist(local_directory.clone());
+    let aws_region_name = utils::get_aws_region_name_from_env();
+    let aws_endpoint = utils::get_aws_endpoint_from_env();
+    let aws_bucket_name = utils::get_aws_bucket_name_from_env();
 
     let region = Region::Custom {
-        name: "us-west-004".to_string(),
-        endpoint: "s3.us-west-004.backblazeb2.com".to_string(),
+        name: aws_region_name,
+        endpoint: aws_endpoint,
     };
-    let backblaze_storage = S3Storage::new(region, "crabbucket");
+
+    let backblaze_storage = S3Storage::new(region, &aws_bucket_name);
 
     let mut filenames: HashMap<String, Vec<u8>> =
         utils::get_filenames_from_storage(backblaze_storage.clone()).await;

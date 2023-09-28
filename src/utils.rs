@@ -129,6 +129,30 @@ pub fn get_local_dir_from_env() -> String {
     }
 }
 
+pub fn get_aws_region_name_from_env() -> String {
+    dotenv().ok();
+    match env::var("AWS_REGION_NAME") {
+        Ok(value) => value,
+        Err(_) => panic!("Please set an AWS_REGION_NAME in your .env file"),
+    }
+}
+
+pub fn get_aws_endpoint_from_env() -> String {
+    dotenv().ok();
+    match env::var("AWS_ENDPOINT") {
+        Ok(value) => value,
+        Err(_) => panic!("Please set an AWS_ENDPOINT in your .env file"),
+    }
+}
+
+pub fn get_aws_bucket_name_from_env() -> String {
+    dotenv().ok();
+    match env::var("AWS_BUCKET_NAME") {
+        Ok(value) => value,
+        Err(_) => panic!("Please set an AWS_BUCKET_NAME in your .env file"),
+    }
+}
+
 pub fn create_dir_if_not_exist(local_directory: String) {
     let path = std::path::Path::new(&local_directory);
     if !path.exists() {
