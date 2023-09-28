@@ -1,7 +1,7 @@
 [package]
 name = "crabguard"
-version = "0.1.0"
-description = "A minimalistic CLI app for encrypted CRUD operations on local and remote storage"
+version = "0.1.1"
+description = "A cli tool for end-to-end encryption for s3 storage"
 edition = "2021"
 authors = ["Makis Christou <makis_christou@protonmail.com>"]
 license = "MIT"
