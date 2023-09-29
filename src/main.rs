@@ -12,11 +12,12 @@ use std::time::Instant;
 use storage::s3::S3Storage;
 
 use crate::args::{Cli, Commands};
+use crypto::CounterNonceSequence;
 use storage::Storage;
-use utils::CounterNonceSequence;
 use utils::HASHMAP_NAME;
 
 mod args;
+mod crypto;
 mod storage;
 mod utils;
 
@@ -36,7 +37,7 @@ async fn encrypt_and_upload_data_chunk(
     let nonce_sequence = CounterNonceSequence::new_random();
     let starting_value = nonce_sequence.0.to_vec();
 
-    let cypher_text_with_tag = utils::encrypt(data.to_owned(), key_bytes.clone(), nonce_sequence)?;
+    let cypher_text_with_tag = crypto::encrypt(data.to_owned(), key_bytes.clone(), nonce_sequence)?;
 
     // Prepend the nonce on the ciphertext
     let mut data_to_store = starting_value;
@@ -65,7 +66,7 @@ async fn add_name_to_hashmap(
 
     let nonce_array: [u8; NONCE_LEN] = starting_value.try_into().unwrap();
     let nonce_sequence = CounterNonceSequence::new(nonce_array);
-    let encrypted_name = utils::encrypt(
+    let encrypted_name = crypto::encrypt(
         plaintext_filename.try_into().unwrap(),
         key_bytes.clone(),
         nonce_sequence,
@@ -113,7 +114,7 @@ async fn download_and_decrypt_chunk(
     // Extract actual cyphertext
     let cypher_text_with_tag = &file_contents[NONCE_LEN..];
 
-    let decrypted_data = utils::decrypt(cypher_text_with_tag.to_vec(), key_bytes, nonce_sequence)?;
+    let decrypted_data = crypto::decrypt(cypher_text_with_tag.to_vec(), key_bytes, nonce_sequence)?;
 
     Ok(decrypted_data)
 }
@@ -134,7 +135,7 @@ fn get_unique_filenames(
 
             let encrypted_name: Vec<u8> = name_blob[NONCE_LEN..].try_into().unwrap();
 
-            match utils::decrypt(encrypted_name, key_bytes.clone(), nonce_sequence) {
+            match crypto::decrypt(encrypted_name, key_bytes.clone(), nonce_sequence) {
                 Ok(decrypted_name) => {
                     let s = String::from_utf8(decrypted_name).unwrap();
                     let mut parts = s.rsplitn(2, '_');
@@ -171,7 +172,7 @@ fn get_all_filenames_of(
             let encrypted_name: Vec<u8> = name_blob[NONCE_LEN..].try_into().unwrap();
 
             let decrypted_name =
-                utils::decrypt(encrypted_name, key_bytes.clone(), nonce_sequence).unwrap();
+                crypto::decrypt(encrypted_name, key_bytes.clone(), nonce_sequence).unwrap();
 
             let s = String::from_utf8(decrypted_name).unwrap();
 
