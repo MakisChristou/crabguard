@@ -27,7 +27,7 @@ struct Data {
     filenames: HashMap<String, Vec<u8>>,
 }
 
-async fn encrypt_and_upload_data_file(
+async fn encrypt_and_upload_data_chunk(
     data: &Vec<u8>,
     plaintext_filename: &str,
     key_bytes: Vec<u8>,
@@ -95,7 +95,7 @@ async fn remove_name_from_hashmap(
     Ok(())
 }
 
-async fn download_and_decrypt_file(
+async fn download_and_decrypt_chunk(
     plaintext_filename: &str,
     key_bytes: Vec<u8>,
     storage: &impl Storage,
@@ -241,7 +241,7 @@ async fn main() -> Result<(), Unspecified> {
                     let end = std::cmp::min(start + CHUNK_SIZE, data.len());
                     let chunk_data = &data[start..end].to_vec();
 
-                    encrypt_and_upload_data_file(
+                    encrypt_and_upload_data_chunk(
                         chunk_data,
                         &format!("{}_{}", plaintext_filename, chunk),
                         key_bytes.clone(),
@@ -291,7 +291,7 @@ async fn main() -> Result<(), Unspecified> {
                 let start_time = Instant::now();
 
                 loop {
-                    match download_and_decrypt_file(
+                    match download_and_decrypt_chunk(
                         &format!("{}_{}", plaintext_filename, current_chunk),
                         key_bytes.clone(),
                         &backblaze_storage,
