@@ -2,6 +2,8 @@ extern crate bytes;
 extern crate rusoto_core;
 extern crate rusoto_s3;
 
+use std::collections::HashSet;
+
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::stream::StreamExt;
@@ -110,7 +112,7 @@ impl Storage for S3Storage {
         }
     }
 
-    async fn size_of(&self, filename: &str) -> Result<i64, String> {
+    async fn size_of(&self, encrypted_filenames: HashSet<String>) -> Result<i64, String> {
         // List all files in a bucket
         let list_req = ListObjectsV2Request {
             bucket: self.bucket_name.to_string(),
@@ -124,9 +126,10 @@ impl Storage for S3Storage {
                 if let Some(objects) = output.contents {
                     for object in objects {
                         if let Some(key) = object.key {
-                            if key.starts_with(filename) {}
-                            let size = object.size.unwrap_or(0);
-                            total_size += size;
+                            if encrypted_filenames.contains(&key) {
+                                let size = object.size.unwrap_or(0);
+                                total_size += size;
+                            }
                         }
                     }
                     Ok(total_size)

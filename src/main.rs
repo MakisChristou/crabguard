@@ -118,7 +118,6 @@ async fn download_and_decrypt_chunk(
     Ok(decrypted_data)
 }
 
-
 fn get_unique_filenames(
     filenames: &HashMap<String, Vec<u8>>,
     files: &Vec<String>,
@@ -184,144 +183,206 @@ fn get_all_filenames_of(
     file_names
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Unspecified> {
-    // Enviroment Variables
+async fn handle_upload(
+    file_path: &str,
+    config: Config,
+    storage: &impl Storage,
+    filenames: &mut HashMap<String, Vec<u8>>,
+) -> Result<(), Unspecified> {
+    let data = fs::read(file_path).unwrap();
+    let path = Path::new(file_path);
+
+    if let Some(file_name) = path.file_name() {
+        let plaintext_filename = file_name.to_str().unwrap();
+        let num_chunks = (data.len() + CHUNK_SIZE - 1) / CHUNK_SIZE;
+
+        // Initialize the progress bar
+        let pb = utils::create_progress_bar(num_chunks as u64);
+        let start_time = Instant::now();
+
+        for chunk in 0..num_chunks {
+            let start = chunk * CHUNK_SIZE;
+            let end = std::cmp::min(start + CHUNK_SIZE, data.len());
+            let chunk_data = &data[start..end].to_vec();
+
+            encrypt_and_upload_data_chunk(
+                chunk_data,
+                &format!("{}_{}", plaintext_filename, chunk),
+                config.key_bytes.clone(),
+                storage,
+            )
+            .await?;
+
+            add_name_to_hashmap(
+                &format!("{}_{}", plaintext_filename, chunk),
+                filenames,
+                config.key_bytes.clone(),
+                storage,
+            )
+            .await?;
+
+            utils::update_progress_bar(&pb, chunk, &start_time);
+        }
+
+        pb.finish_with_message("upload complete");
+    } else {
+        panic!("Path given does not contain filename");
+    }
+
+    Ok(())
+}
+
+async fn handle_download(
+    file_name: &str,
+    config: Config,
+    storage: &impl Storage,
+    filenames: &mut HashMap<String, Vec<u8>>,
+) -> Result<(), Unspecified> {
+    let path = Path::new(file_name);
+
+    if let Some(file_name) = path.file_name() {
+        let plaintext_filename = file_name.to_str().unwrap();
+
+        let mut complete_plaintext: Vec<u8> = Vec::new();
+        let mut current_chunk = 0;
+
+        let files = storage.list().await.unwrap();
+        let associated_filenames = get_all_filenames_of(
+            plaintext_filename,
+            &filenames,
+            &files,
+            config.key_bytes.clone(),
+        );
+
+        let total_size = storage.size_of(associated_filenames).await;
+        let num_chunks = total_size.unwrap() / CHUNK_SIZE as i64;
+
+        // Initialize the progress bar
+        let pb = utils::create_progress_bar(num_chunks.try_into().unwrap());
+        let start_time = Instant::now();
+
+        loop {
+            match download_and_decrypt_chunk(
+                &format!("{}_{}", plaintext_filename, current_chunk),
+                config.key_bytes.clone(),
+                storage,
+            )
+            .await
+            {
+                Ok(mut decrypted_data) => {
+                    complete_plaintext.append(&mut decrypted_data);
+                    utils::update_progress_bar(&pb, current_chunk, &start_time);
+                }
+                Err(e) => {
+                    if current_chunk != 0 {
+                        fs::write(file_name, complete_plaintext.clone()).unwrap();
+                        return Ok(());
+                    } else {
+                        panic!("{}", e);
+                    }
+                }
+            }
+
+            current_chunk += 1;
+        }
+    } else {
+        panic!("Path given does not contain filename");
+    }
+}
+
+async fn handle_delete(
+    file_name: &str,
+    storage: &impl Storage,
+    filenames: &mut HashMap<String, Vec<u8>>,
+    config: Config,
+) -> Result<(), Unspecified> {
+    let path = Path::new(file_name);
+    if let Some(file_name) = path.file_name() {
+        let plaintext_filename = file_name.to_str().unwrap();
+        let files = storage.list().await.unwrap();
+        let associated_filenames =
+            get_all_filenames_of(plaintext_filename, &filenames, &files, config.key_bytes);
+
+        for filename in associated_filenames {
+            storage.delete(&filename.to_owned()).await.unwrap();
+            remove_name_from_hashmap(&filename, filenames, storage).await?;
+        }
+    } else {
+        panic!("Path given does not contain filename");
+    }
+    Ok(())
+}
+
+async fn handle_list(
+    storage: &impl Storage,
+    filenames: &HashMap<String, Vec<u8>>,
+    config: Config,
+) -> Result<(), Unspecified> {
+    let files = storage.list().await.unwrap();
+
+    let unique_file_names = get_unique_filenames(&filenames, &files, config.key_bytes);
+
+    if unique_file_names.is_empty() {
+        println!("Bucket is empty!");
+    } else {
+        for filename in unique_file_names {
+            println!("{}", filename);
+        }
+    }
+    Ok(())
+}
+
+#[derive(Clone)]
+struct Config {
+    key_bytes: Vec<u8>,
+    aws_region_name: String,
+    aws_endpoint: String,
+    aws_bucket_name: String,
+}
+
+fn fetch_config_from_env() -> Config {
     let key_bytes = utils::get_key_from_env_or_generate_new();
     let aws_region_name = utils::get_aws_region_name_from_env();
     let aws_endpoint = utils::get_aws_endpoint_from_env();
     let aws_bucket_name = utils::get_aws_bucket_name_from_env();
 
-    let region = Region::Custom {
-        name: aws_region_name,
-        endpoint: aws_endpoint,
-    };
+    Config {
+        key_bytes,
+        aws_region_name,
+        aws_endpoint,
+        aws_bucket_name,
+    }
+}
 
-    let backblaze_storage = S3Storage::new(region, &aws_bucket_name);
+fn initialize_storage(config: Config) -> impl Storage {
+    let region = Region::Custom {
+        name: config.aws_region_name,
+        endpoint: config.aws_endpoint,
+    };
+    S3Storage::new(region, &config.aws_bucket_name)
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Unspecified> {
+    let config = fetch_config_from_env();
+    let backblaze_storage = initialize_storage(config.clone());
 
     let mut filenames: HashMap<String, Vec<u8>> =
-        utils::get_filenames_from_storage(backblaze_storage.clone()).await;
+        utils::get_filenames_from_storage(&backblaze_storage).await;
 
     match &Cli::parse_arguments().command {
         Some(Commands::Upload { file_path }) => {
-            let data = fs::read(file_path).unwrap();
-            let path = Path::new(file_path);
-
-            if let Some(file_name) = path.file_name() {
-                let plaintext_filename = file_name.to_str().unwrap();
-                let num_chunks = (data.len() + CHUNK_SIZE - 1) / CHUNK_SIZE;
-
-                // Initialize the progress bar
-                let pb = utils::create_progress_bar(num_chunks as u64);
-                let start_time = Instant::now();
-
-                for chunk in 0..num_chunks {
-                    let start = chunk * CHUNK_SIZE;
-                    let end = std::cmp::min(start + CHUNK_SIZE, data.len());
-                    let chunk_data = &data[start..end].to_vec();
-
-                    encrypt_and_upload_data_chunk(
-                        chunk_data,
-                        &format!("{}_{}", plaintext_filename, chunk),
-                        key_bytes.clone(),
-                        &backblaze_storage,
-                    )
-                    .await?;
-
-                    add_name_to_hashmap(
-                        &format!("{}_{}", plaintext_filename, chunk),
-                        &mut filenames,
-                        key_bytes.clone(),
-                        &backblaze_storage,
-                    )
-                    .await?;
-
-                    utils::update_progress_bar(&pb, chunk, &start_time);
-                }
-
-                pb.finish_with_message("upload complete");
-            } else {
-                panic!("Path given does not contain filename");
-            }
+            handle_upload(file_path, config, &backblaze_storage, &mut filenames).await?;
         }
         Some(Commands::Download { file_name }) => {
-            let path = Path::new(file_name);
-
-            if let Some(file_name) = path.file_name() {
-                let plaintext_filename = file_name.to_str().unwrap();
-
-                let mut complete_plaintext: Vec<u8> = Vec::new();
-                let mut current_chunk = 0;
-
-                let total_size = backblaze_storage.size_of(plaintext_filename).await;
-                let num_chunks = total_size.unwrap() / CHUNK_SIZE as i64;
-
-                // Initialize the progress bar
-                let pb = utils::create_progress_bar(num_chunks.try_into().unwrap());
-                let start_time = Instant::now();
-
-                loop {
-                    match download_and_decrypt_chunk(
-                        &format!("{}_{}", plaintext_filename, current_chunk),
-                        key_bytes.clone(),
-                        &backblaze_storage,
-                    )
-                    .await
-                    {
-                        Ok(mut decrypted_data) => {
-                            complete_plaintext.append(&mut decrypted_data);
-                            utils::update_progress_bar(&pb, current_chunk, &start_time);
-                        }
-                        Err(e) => {
-                            if current_chunk != 0 {
-                                fs::write(file_name, complete_plaintext.clone()).unwrap();
-                                break;
-                            } else {
-                                panic!("{}", e);
-                            }
-                        }
-                    }
-
-                    current_chunk += 1;
-                }
-            } else {
-                panic!("Path given does not contain filename");
-            }
+            handle_download(file_name, config, &backblaze_storage, &mut filenames).await?
         }
         Some(Commands::Delete { file_name }) => {
-            let path = Path::new(file_name);
-            if let Some(file_name) = path.file_name() {
-                let plaintext_filename = file_name.to_str().unwrap();
-                let files = backblaze_storage.list().await.unwrap();
-                let associated_filenames =
-                    get_all_filenames_of(plaintext_filename, &filenames, &files, key_bytes);
-
-                for filename in associated_filenames {
-                    backblaze_storage
-                        .delete(&filename.to_owned())
-                        .await
-                        .unwrap();
-
-                    remove_name_from_hashmap(&filename, &mut filenames, &backblaze_storage).await?;
-                }
-            } else {
-                panic!("Path given does not contain filename");
-            }
+            handle_delete(file_name, &backblaze_storage, &mut filenames, config).await?
         }
         Some(Commands::List {}) => {
-            let files = backblaze_storage.list().await.unwrap();
-
-            let unique_file_names = get_unique_filenames(&filenames, &files, key_bytes);
-
-            if unique_file_names.is_empty() {
-                println!("Bucket is empty!");
-            } else {
-                for filename in unique_file_names {
-                    println!("{}", filename);
-                }
-            }
+            handle_list(&backblaze_storage, &filenames, config).await?;
         }
-
         None => {
             println!("Welcome to 🦀🔒 crabguard!");
             println!("Please give a valid command");

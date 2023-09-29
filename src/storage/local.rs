@@ -1,4 +1,4 @@
-use std::fs;
+use std::{collections::HashSet, fs};
 
 use super::Storage;
 use async_trait::async_trait;
@@ -65,7 +65,7 @@ impl Storage for LocalStorage {
         }
     }
 
-    async fn size_of(&self, filename: &str) -> Result<i64, String> {
+    async fn size_of(&self, encrypted_filenames: HashSet<String>) -> Result<i64, String> {
         todo!()
     }
 }
