@@ -117,21 +117,24 @@ impl Storage for S3Storage {
             ..Default::default()
         };
 
+        let mut total_size = 0;
+
         match self.s3_client.list_objects_v2(list_req).await {
             Ok(output) => {
                 if let Some(objects) = output.contents {
                     for object in objects {
                         if let Some(key) = object.key {
+                            if key.starts_with(filename) {}
                             let size = object.size.unwrap_or(0);
-                            return Ok(size);
+                            total_size += size;
                         }
                     }
-                    Err(format!("File not found"))
+                    Ok(total_size)
                 } else {
-                    Err(format!("Could not get file size"))
+                    return Err(format!("Could not get file size"));
                 }
             }
-            Err(e) => Err(format!("Could not get file size {}", e)),
+            Err(e) => return Err(format!("Could not get file size {}", e)),
         }
     }
 }

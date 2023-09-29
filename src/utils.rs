@@ -182,6 +182,17 @@ pub fn create_progress_bar(num_chunks: u64) -> ProgressBar {
     pb
 }
 
+pub fn create_mysterious_bar() -> ProgressBar {
+    let pb = ProgressBar::new_spinner();
+    pb.set_style(
+        ProgressStyle::default_spinner()
+            .template("{spinner:.green} [{elapsed_precise}] {bytes} bytes processed {msg}")
+            .unwrap()
+            .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈"),
+    );
+    pb
+}
+
 pub fn update_progress_bar(pb: &ProgressBar, current_chunk: usize, start_time: &Instant) {
     pb.inc(CHUNK_SIZE as u64);
     let elapsed_time = start_time.elapsed().as_secs_f64();

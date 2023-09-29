@@ -274,20 +274,21 @@ async fn main() -> Result<(), Unspecified> {
                 let mut complete_plaintext: Vec<u8> = Vec::new();
                 let mut current_chunk = 0;
 
-                let files = backblaze_storage.list().await.unwrap();
-                let total_size = get_total_file_size(
-                    &filenames,
-                    &files,
-                    plaintext_filename,
-                    key_bytes.clone(),
-                    &backblaze_storage,
-                )
-                .await;
+                // let files = backblaze_storage.list().await.unwrap();
+                // let total_size = get_total_file_size(
+                //     &filenames,
+                //     &files,
+                //     plaintext_filename,
+                //     key_bytes.clone(),
+                //     &backblaze_storage,
+                // )
+                // .await;
 
+                let total_size = backblaze_storage.size_of(plaintext_filename).await;
                 let num_chunks = total_size.unwrap() / CHUNK_SIZE as i64;
 
                 // Initialize the progress bar
-                let pb = utils::create_progress_bar(num_chunks as u64);
+                let pb = utils::create_progress_bar(num_chunks.try_into().unwrap());
                 let start_time = Instant::now();
 
                 loop {
