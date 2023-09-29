@@ -175,17 +175,17 @@ pub async fn get_filenames_from_storage(storage: impl Storage) -> HashMap<String
 }
 
 pub fn create_progress_bar(num_chunks: u64) -> ProgressBar {
-    let pb = ProgressBar::new(num_chunks);
+    let pb = ProgressBar::new(num_chunks * CHUNK_SIZE as u64);
     pb.set_style(ProgressStyle::default_bar()
         .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}").unwrap()
         .progress_chars("#>-"));
     pb
 }
 
-pub fn update_progress_bar(pb: &ProgressBar, start_time: &Instant) {
-    pb.inc(1);
+pub fn update_progress_bar(pb: &ProgressBar, current_chunk: usize, start_time: &Instant) {
+    pb.inc(CHUNK_SIZE as u64);
     let elapsed_time = start_time.elapsed().as_secs_f64();
-    let speed = (CHUNK_SIZE as f64 / 1024.0) / elapsed_time; // KB/s
+    let speed = ((CHUNK_SIZE * current_chunk) as f64 / elapsed_time) / 1000.0; // KB/s
     pb.set_message(format!("{:.2} KB/s", speed));
 }
 

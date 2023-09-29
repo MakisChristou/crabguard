@@ -257,7 +257,7 @@ async fn main() -> Result<(), Unspecified> {
                     )
                     .await?;
 
-                    utils::update_progress_bar(&pb, &start_time);
+                    utils::update_progress_bar(&pb, chunk, &start_time);
                 }
 
                 pb.finish_with_message("upload complete");
@@ -300,7 +300,7 @@ async fn main() -> Result<(), Unspecified> {
                     {
                         Ok(mut decrypted_data) => {
                             complete_plaintext.append(&mut decrypted_data);
-                            utils::update_progress_bar(&pb, &start_time);
+                            utils::update_progress_bar(&pb, current_chunk, &start_time);
                         }
                         Err(e) => {
                             if current_chunk != 0 {
