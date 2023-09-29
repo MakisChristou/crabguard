@@ -66,7 +66,7 @@ impl Storage for S3Storage {
                         .collect::<Vec<u8>>();
                     return Ok(data);
                 } else {
-                    Err(format!("Body of file is None",))
+                    Err("Body of file is None".to_string())
                 }
             }
             Err(e) => Err(format!("Could not download file {}", e)),
@@ -105,7 +105,7 @@ impl Storage for S3Storage {
                     }
                     Ok(filenames)
                 } else {
-                    Err(format!("Could not list files"))
+                    Err("Could not list files".to_string())
                 }
             }
             Err(e) => Err(format!("Could not list files {}", e)),
@@ -134,7 +134,7 @@ impl Storage for S3Storage {
                     }
                     Ok(total_size)
                 } else {
-                    return Err(format!("Could not get file size"));
+                    return Err("Could not get file size".to_string());
                 }
             }
             Err(e) => return Err(format!("Could not get file size {}", e)),

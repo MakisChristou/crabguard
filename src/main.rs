@@ -120,7 +120,7 @@ async fn download_and_decrypt_chunk(
 
 fn get_unique_filenames(
     filenames: &HashMap<String, Vec<u8>>,
-    files: &Vec<String>,
+    files: &[String],
     key_bytes: Vec<u8>,
 ) -> HashSet<String> {
     let filtered_files: Vec<_> = files.iter().filter(|&file| file != HASHMAP_NAME).collect();
@@ -156,7 +156,7 @@ fn get_unique_filenames(
 fn get_all_filenames_of(
     plaintext_filename: &str,
     filenames: &HashMap<String, Vec<u8>>,
-    files: &Vec<String>,
+    files: &[String],
     key_bytes: Vec<u8>,
 ) -> HashSet<String> {
     let filtered_files: Vec<_> = files.iter().filter(|&file| file != HASHMAP_NAME).collect();
@@ -249,7 +249,7 @@ async fn handle_download(
         let files = storage.list().await.unwrap();
         let associated_filenames = get_all_filenames_of(
             plaintext_filename,
-            &filenames,
+            filenames,
             &files,
             config.key_bytes.clone(),
         );
@@ -301,7 +301,7 @@ async fn handle_delete(
         let plaintext_filename = file_name.to_str().unwrap();
         let files = storage.list().await.unwrap();
         let associated_filenames =
-            get_all_filenames_of(plaintext_filename, &filenames, &files, config.key_bytes);
+            get_all_filenames_of(plaintext_filename, filenames, &files, config.key_bytes);
 
         for filename in associated_filenames {
             storage.delete(&filename.to_owned()).await.unwrap();
@@ -320,7 +320,7 @@ async fn handle_list(
 ) -> Result<(), Unspecified> {
     let files = storage.list().await.unwrap();
 
-    let unique_file_names = get_unique_filenames(&filenames, &files, config.key_bytes);
+    let unique_file_names = get_unique_filenames(filenames, &files, config.key_bytes);
 
     if unique_file_names.is_empty() {
         println!("Bucket is empty!");
