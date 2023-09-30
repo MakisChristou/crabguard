@@ -1,3 +1,4 @@
+use config::Config;
 use ring::aead::NONCE_LEN;
 use ring::error::Unspecified;
 use rusoto_core::Region;
@@ -17,6 +18,7 @@ use storage::Storage;
 use utils::HASHMAP_NAME;
 
 mod args;
+mod config;
 mod crypto;
 mod storage;
 mod utils;
@@ -362,28 +364,6 @@ async fn handle_list(
     Ok(())
 }
 
-#[derive(Clone)]
-struct Config {
-    key_bytes: Vec<u8>,
-    aws_region_name: String,
-    aws_endpoint: String,
-    aws_bucket_name: String,
-}
-
-fn fetch_config_from_env() -> Config {
-    let key_bytes = utils::get_key_from_env_or_generate_new();
-    let aws_region_name = utils::get_aws_region_name_from_env();
-    let aws_endpoint = utils::get_aws_endpoint_from_env();
-    let aws_bucket_name = utils::get_aws_bucket_name_from_env();
-
-    Config {
-        key_bytes,
-        aws_region_name,
-        aws_endpoint,
-        aws_bucket_name,
-    }
-}
-
 fn initialize_storage(config: Config) -> impl Storage {
     let region = Region::Custom {
         name: config.aws_region_name,
@@ -394,7 +374,7 @@ fn initialize_storage(config: Config) -> impl Storage {
 
 #[tokio::main]
 async fn main() -> Result<(), Unspecified> {
-    let config = fetch_config_from_env();
+    let config = Config::from_env();
     let backblaze_storage = initialize_storage(config.clone());
 
     let mut filenames: HashMap<String, Vec<u8>> =
