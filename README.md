@@ -1,10 +1,11 @@
 🦀🔒 crabguard: A cli tool for end-to-end encryption for remote and local storage
 
 ## Features
-- Encrypted CRUD on Amazon S3 storage
+- Encrypted upload, download and delete operations on Amazon S3 storage
 - AES-GCM symmetric encryption with random 96-bit nonce
-- Hashed filenames
-- File chuking
+- Hashed filenames using sha256
+- File chuking (currently chunk size is hardcoded to 1MB)
+- Resume upload when interuppted
 
 ## Getting started
 Create a `.env` file like so
