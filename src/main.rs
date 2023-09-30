@@ -224,9 +224,14 @@ async fn handle_upload(
         let remote_chunks = associated_filenames.len();
 
         if remote_chunks == num_chunks {
-            println!("File called {} already uploaded!", plaintext_filename);
-            println!("If you want to replace it, delete it first!");
-            return Ok(());
+            println!("File {} already uploaded!", plaintext_filename);
+            let answer = utils::prompt_yes_no("Do you want to replace it? [y|n]").unwrap();
+
+            if answer {
+                handle_delete(plaintext_filename, storage, filenames, config.clone()).await?;
+            } else {
+                return Ok(());
+            }
         }
 
         // Initialize the progress bar

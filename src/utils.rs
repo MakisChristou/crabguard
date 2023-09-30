@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::fs::OpenOptions;
+use std::io;
 use std::io::Write;
 use std::time::Instant;
 
@@ -106,4 +107,20 @@ pub fn update_progress_bar(pb: &ProgressBar, current_chunk: usize, start_time: &
     let elapsed_time = start_time.elapsed().as_secs_f64();
     let speed = ((CHUNK_SIZE * current_chunk) as f64 / elapsed_time) / 1000.0; // KB/s
     pb.set_message(format!("{:.2} KB/s", speed));
+}
+
+pub fn prompt_yes_no(prompt: &str) -> io::Result<bool> {
+    loop {
+        print!("{} ", prompt);
+        io::stdout().flush()?; // Make sure the prompt is immediately displayed
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+
+        match input.trim().to_lowercase().as_str() {
+            "y" | "yes" => return Ok(true),
+            "n" | "no" => return Ok(false),
+            _ => println!("Please enter 'y' or 'n'."),
+        }
+    }
 }
