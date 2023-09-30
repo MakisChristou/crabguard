@@ -3,7 +3,7 @@
 ## Features
 - Encrypted CRUD on Amazon S3 storage
 - AES-GCM symmetric encryption with random 96-bit nonce
-- Encrypted filenames
+- Hashed filenames
 - File chuking
 
 ## Getting started
