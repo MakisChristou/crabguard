@@ -21,7 +21,7 @@ mod crypto;
 mod storage;
 mod utils;
 
-const CHUNK_SIZE: usize = 1024 * 1024;
+const CHUNK_SIZE: usize = 1024 * 1024; // 1 MiB chunks
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Data {
@@ -212,11 +212,31 @@ async fn handle_upload(
         let plaintext_filename = file_name.to_str().unwrap();
         let num_chunks = (data.len() + CHUNK_SIZE - 1) / CHUNK_SIZE;
 
+        // Get the number of chunks assosiated with this file that were previously uploaded
+        let files = storage.list().await.unwrap();
+        let associated_filenames = get_all_filenames_of(
+            plaintext_filename,
+            filenames,
+            &files,
+            config.key_bytes.clone(),
+        );
+
+        let remote_chunks = associated_filenames.len();
+
+        if remote_chunks == num_chunks {
+            println!("File called {} already uploaded!", plaintext_filename);
+            println!("If you want to replace it, delete it first!");
+            return Ok(());
+        }
+
         // Initialize the progress bar
         let pb = utils::create_progress_bar(num_chunks as u64);
         let start_time = Instant::now();
 
-        for chunk in 0..num_chunks {
+        pb.inc((remote_chunks * CHUNK_SIZE) as u64);
+        let mut chunks_sent_so_far = 0;
+
+        for chunk in remote_chunks..num_chunks {
             let start = chunk * CHUNK_SIZE;
             let end = std::cmp::min(start + CHUNK_SIZE, data.len());
             let chunk_data = &data[start..end].to_vec();
@@ -237,7 +257,8 @@ async fn handle_upload(
             )
             .await?;
 
-            utils::update_progress_bar(&pb, chunk, &start_time);
+            chunks_sent_so_far += 1;
+            utils::update_progress_bar(&pb, chunks_sent_so_far, &start_time);
         }
 
         pb.finish_with_message("upload complete");
