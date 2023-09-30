@@ -207,7 +207,7 @@ async fn handle_upload(
         let num_chunks = (file_len + CHUNK_SIZE - 1) / CHUNK_SIZE;
 
         // Get the number of chunks assosiated with this file that were previously uploaded
-        let files = storage.list().await.unwrap();
+        let files: Vec<String> = filenames.keys().cloned().collect();
         let associated_filenames = get_all_filenames_of(
             plaintext_filename,
             filenames,
@@ -234,7 +234,8 @@ async fn handle_upload(
 
         // Move progress bar and file pointer accordingly
         pb.inc((remote_chunks * CHUNK_SIZE) as u64);
-        file.seek(SeekFrom::Start((remote_chunks * CHUNK_SIZE) as u64)).unwrap();
+        file.seek(SeekFrom::Start((remote_chunks * CHUNK_SIZE) as u64))
+            .unwrap();
 
         let mut chunks_sent_so_far = 0;
 
@@ -285,7 +286,7 @@ async fn handle_download(
         let mut complete_plaintext: Vec<u8> = Vec::new();
         let mut current_chunk = 0;
 
-        let files = storage.list().await.unwrap();
+        let files: Vec<String> = filenames.keys().cloned().collect();
         let associated_filenames = get_all_filenames_of(
             plaintext_filename,
             filenames,
@@ -338,7 +339,7 @@ async fn handle_delete(
     let path = Path::new(file_name);
     if let Some(file_name) = path.file_name() {
         let plaintext_filename = file_name.to_str().unwrap();
-        let files = storage.list().await.unwrap();
+        let files: Vec<String> = filenames.keys().cloned().collect();
         let associated_filenames =
             get_all_filenames_of(plaintext_filename, filenames, &files, config.key_bytes);
 
@@ -354,12 +355,10 @@ async fn handle_delete(
 }
 
 async fn handle_list(
-    storage: &impl Storage,
     filenames: &HashMap<String, Vec<u8>>,
     config: Config,
 ) -> Result<(), Unspecified> {
-    let files = storage.list().await.unwrap();
-
+    let files: Vec<String> = filenames.keys().cloned().collect();
     let unique_file_names = get_unique_filenames(filenames, &files, config.key_bytes);
 
     if unique_file_names.is_empty() {
@@ -391,7 +390,7 @@ async fn main() -> Result<(), Unspecified> {
             handle_delete(file_name, &backblaze_storage, &mut filenames, config).await?
         }
         Some(Commands::List {}) => {
-            handle_list(&backblaze_storage, &filenames, config).await?;
+            handle_list(&filenames, config).await?;
         }
         None => {
             println!("Welcome to 🦀🔒 crabguard!");
