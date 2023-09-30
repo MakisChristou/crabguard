@@ -1,7 +1,6 @@
 use config::Config;
 use ring::aead::NONCE_LEN;
 use ring::error::Unspecified;
-use rusoto_core::Region;
 use serde::Deserialize;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -364,18 +363,10 @@ async fn handle_list(
     Ok(())
 }
 
-fn initialize_storage(config: Config) -> impl Storage {
-    let region = Region::Custom {
-        name: config.aws_region_name,
-        endpoint: config.aws_endpoint,
-    };
-    S3Storage::new(region, &config.aws_bucket_name)
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Unspecified> {
     let config = Config::from_env();
-    let backblaze_storage = initialize_storage(config.clone());
+    let backblaze_storage = S3Storage::from_config(config.clone());
 
     let mut filenames: HashMap<String, Vec<u8>> =
         utils::get_filenames_from_storage(&backblaze_storage).await;

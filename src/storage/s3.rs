@@ -14,6 +14,8 @@ use rusoto_s3::{
 };
 extern crate dotenv;
 
+use crate::config::Config;
+
 use super::Storage;
 
 #[derive(Clone)]
@@ -29,6 +31,14 @@ impl S3Storage {
             bucket_name: bucket_name.to_owned(),
             s3_client,
         }
+    }
+
+    pub fn from_config(config: Config) -> Self {
+        let region = Region::Custom {
+            name: config.aws_region_name,
+            endpoint: config.aws_endpoint,
+        };
+        S3Storage::new(region, &config.aws_bucket_name)
     }
 }
 
