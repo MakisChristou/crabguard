@@ -42,7 +42,7 @@ pub fn get_key_from_env_or_generate_new() -> Vec<u8> {
     }
 }
 
-pub fn get_local_dir_from_env() -> String {
+pub fn _get_local_dir_from_env() -> String {
     dotenv().ok();
     match env::var("LOCAL_DIR") {
         Ok(value) => value,
@@ -74,7 +74,7 @@ pub fn get_aws_bucket_name_from_env() -> String {
     }
 }
 
-pub fn create_dir_if_not_exist(local_directory: String) {
+pub fn _create_dir_if_not_exist(local_directory: String) {
     let path = std::path::Path::new(&local_directory);
     if !path.exists() {
         if let Err(e) = fs::create_dir_all(path) {

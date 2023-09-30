@@ -119,10 +119,10 @@ mod test {
 
         let nonce_sequence = CounterNonceSequence::new(starting_value);
         match decrypt(cypher_text_with_tag, key_bytes, nonce_sequence) {
-            Ok(decrypted_ciphertext) => {
+            Ok(_) => {
                 assert!(false)
             }
-            Err(e) => {
+            Err(_) => {
                 assert!(true)
             }
         };

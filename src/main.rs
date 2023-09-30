@@ -83,19 +83,6 @@ async fn add_name_to_hashmap(
     Ok(())
 }
 
-async fn remove_name_from_hashmap(
-    hashed_filename: &str,
-    filenames: &mut HashMap<String, Vec<u8>>,
-    storage: &impl Storage,
-) -> Result<(), Unspecified> {
-    filenames.remove(hashed_filename);
-
-    let encoded: Vec<u8> = bincode::serialize(&filenames).unwrap();
-    storage.upload(HASHMAP_NAME, &encoded).await.unwrap();
-
-    Ok(())
-}
-
 async fn remove_names_from_hashmap(
     hashed_filenames: HashSet<String>,
     filenames: &mut HashMap<String, Vec<u8>>,

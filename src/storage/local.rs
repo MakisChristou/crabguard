@@ -8,6 +8,7 @@ pub struct LocalStorage {
     path: String,
 }
 
+#[allow(dead_code)]
 impl LocalStorage {
     pub fn new(path: &str) -> Self {
         LocalStorage {
@@ -48,7 +49,7 @@ impl Storage for LocalStorage {
         }
     }
 
-    async fn batch_delete(&self, filenames: HashSet<String>) -> Result<(), String> {
+    async fn batch_delete(&self, _filenames: HashSet<String>) -> Result<(), String> {
         todo!()
     }
 
@@ -69,7 +70,7 @@ impl Storage for LocalStorage {
         }
     }
 
-    async fn size_of(&self, encrypted_filenames: HashSet<String>) -> Result<i64, String> {
+    async fn size_of(&self, _encrypted_filenames: HashSet<String>) -> Result<i64, String> {
         todo!()
     }
 }
