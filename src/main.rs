@@ -9,6 +9,8 @@ use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
 use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
 use std::path::Path;
 use std::time::Instant;
 use storage::s3::S3Storage;
@@ -230,7 +232,10 @@ async fn handle_upload(
         let pb = utils::create_progress_bar(num_chunks as u64);
         let start_time = Instant::now();
 
+        // Move progress bar and file pointer accordingly
         pb.inc((remote_chunks * CHUNK_SIZE) as u64);
+        file.seek(SeekFrom::Start((remote_chunks * CHUNK_SIZE) as u64)).unwrap();
+
         let mut chunks_sent_so_far = 0;
 
         for chunk in remote_chunks..num_chunks {
