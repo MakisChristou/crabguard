@@ -7,6 +7,8 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
+use std::fs::File;
+use std::io::Read;
 use std::path::Path;
 use std::time::Instant;
 use storage::s3::S3Storage;
@@ -193,12 +195,14 @@ async fn handle_upload(
     storage: &impl Storage,
     filenames: &mut HashMap<String, Vec<u8>>,
 ) -> Result<(), Unspecified> {
-    let data = fs::read(file_path).unwrap();
     let path = Path::new(file_path);
+    let mut file = File::open(file_path).unwrap();
 
     if let Some(file_name) = path.file_name() {
         let plaintext_filename = file_name.to_str().unwrap();
-        let num_chunks = (data.len() + CHUNK_SIZE - 1) / CHUNK_SIZE;
+
+        let file_len = file.metadata().unwrap().len() as usize;
+        let num_chunks = (file_len + CHUNK_SIZE - 1) / CHUNK_SIZE;
 
         // Get the number of chunks assosiated with this file that were previously uploaded
         let files = storage.list().await.unwrap();
@@ -230,12 +234,12 @@ async fn handle_upload(
         let mut chunks_sent_so_far = 0;
 
         for chunk in remote_chunks..num_chunks {
-            let start = chunk * CHUNK_SIZE;
-            let end = std::cmp::min(start + CHUNK_SIZE, data.len());
-            let chunk_data = &data[start..end].to_vec();
+            let mut chunk_data = vec![0; CHUNK_SIZE];
+            let bytes_read = file.read(&mut chunk_data).unwrap();
+            chunk_data.truncate(bytes_read); // Handle last chunk
 
             encrypt_and_upload_data_chunk(
-                chunk_data,
+                &chunk_data,
                 &format!("{}_{}", plaintext_filename, chunk),
                 config.key_bytes.clone(),
                 storage,
