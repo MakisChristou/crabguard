@@ -96,6 +96,21 @@ async fn remove_name_from_hashmap(
     Ok(())
 }
 
+async fn remove_names_from_hashmap(
+    hashed_filenames: HashSet<String>,
+    filenames: &mut HashMap<String, Vec<u8>>,
+    storage: &impl Storage,
+) -> Result<(), Unspecified> {
+    for hashed_filename in hashed_filenames {
+        filenames.remove(&hashed_filename);
+    }
+
+    let encoded: Vec<u8> = bincode::serialize(&filenames).unwrap();
+    storage.upload(HASHMAP_NAME, &encoded).await.unwrap();
+
+    Ok(())
+}
+
 async fn download_and_decrypt_chunk(
     plaintext_filename: &str,
     key_bytes: Vec<u8>,
@@ -304,10 +319,11 @@ async fn handle_delete(
         let associated_filenames =
             get_all_filenames_of(plaintext_filename, filenames, &files, config.key_bytes);
 
-        for filename in associated_filenames {
-            storage.delete(&filename.to_owned()).await.unwrap();
-            remove_name_from_hashmap(&filename, filenames, storage).await?;
-        }
+        storage
+            .batch_delete(associated_filenames.clone())
+            .await
+            .unwrap();
+        remove_names_from_hashmap(associated_filenames, filenames, storage).await?;
     } else {
         panic!("Path given does not contain filename");
     }

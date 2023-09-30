@@ -9,7 +9,8 @@ use bytes::Bytes;
 use futures_util::stream::StreamExt;
 use rusoto_core::Region;
 use rusoto_s3::{
-    DeleteObjectRequest, GetObjectRequest, ListObjectsV2Request, PutObjectRequest, S3Client, S3,
+    Delete, DeleteObjectRequest, DeleteObjectsRequest, GetObjectRequest, ListObjectsV2Request,
+    ObjectIdentifier, PutObjectRequest, S3Client, S3,
 };
 extern crate dotenv;
 
@@ -84,6 +85,31 @@ impl Storage for S3Storage {
         match self.s3_client.delete_object(delete_req).await {
             Ok(_) => Ok(()),
             Err(e) => Err(format!("Could not delete file {}", e)),
+        }
+    }
+
+    async fn batch_delete(&self, filenames: HashSet<String>) -> Result<(), String> {
+        // Prepare the list of objects to delete
+        let objects: Vec<ObjectIdentifier> = filenames
+            .into_iter()
+            .map(|filename| ObjectIdentifier {
+                key: filename,
+                ..Default::default()
+            })
+            .collect();
+
+        let delete_req = DeleteObjectsRequest {
+            bucket: self.bucket_name.to_string(),
+            delete: Delete {
+                objects,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        match self.s3_client.delete_objects(delete_req).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("Could not batch delete files: {}", e)),
         }
     }
 

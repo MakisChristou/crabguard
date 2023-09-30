@@ -48,6 +48,10 @@ impl Storage for LocalStorage {
         }
     }
 
+    async fn batch_delete(&self, filenames: HashSet<String>) -> Result<(), String> {
+        todo!()
+    }
+
     async fn list(&self) -> Result<Vec<String>, String> {
         match fs::read_dir(&self.path) {
             Ok(file_names) => {
