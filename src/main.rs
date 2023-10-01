@@ -308,6 +308,8 @@ async fn handle_download(
             config.key_bytes.clone(),
         );
 
+        println!("Assisiated Filenameas {}", associated_filenames.len());
+
         let mut total_size = 0;
 
         for assosiated_filename in associated_filenames {

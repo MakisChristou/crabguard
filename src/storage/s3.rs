@@ -9,14 +9,14 @@ use bytes::Bytes;
 use futures_util::stream::StreamExt;
 use rusoto_core::Region;
 use rusoto_s3::{
-    Delete, DeleteObjectRequest, DeleteObjectsRequest, GetObjectRequest,
-    ObjectIdentifier, PutObjectRequest, S3Client, S3,
+    Delete, DeleteObjectRequest, DeleteObjectsRequest, GetObjectRequest, ObjectIdentifier,
+    PutObjectRequest, S3Client, S3,
 };
 extern crate dotenv;
-
+use super::Storage;
 use crate::config::Config;
 
-use super::Storage;
+const MAX_DELETE_COUNT: usize = 1000;
 
 #[derive(Clone)]
 pub struct S3Storage {
@@ -99,27 +99,35 @@ impl Storage for S3Storage {
     }
 
     async fn batch_delete(&self, filenames: HashSet<String>) -> Result<(), String> {
-        // Prepare the list of objects to delete
-        let objects: Vec<ObjectIdentifier> = filenames
-            .into_iter()
-            .map(|filename| ObjectIdentifier {
-                key: filename,
-                ..Default::default()
-            })
-            .collect();
+        // Convert the filenames into a Vec
+        let filenames_vec: Vec<String> = filenames.into_iter().collect();
 
-        let delete_req = DeleteObjectsRequest {
-            bucket: self.bucket_name.to_string(),
-            delete: Delete {
-                objects,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
+        // Split the filenames into chunks of 1000 or fewer
+        for chunk in filenames_vec.chunks(MAX_DELETE_COUNT) {
+            // Prepare the list of objects to delete for this chunk
+            let objects: Vec<ObjectIdentifier> = chunk
+                .iter()
+                .map(|filename| ObjectIdentifier {
+                    key: filename.clone(),
+                    ..Default::default()
+                })
+                .collect();
 
-        match self.s3_client.delete_objects(delete_req).await {
-            Ok(_) => Ok(()),
-            Err(e) => Err(format!("Could not batch delete files: {}", e)),
+            let delete_req = DeleteObjectsRequest {
+                bucket: self.bucket_name.to_string(),
+                delete: Delete {
+                    objects,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+
+            match self.s3_client.delete_objects(delete_req).await {
+                Ok(_) => continue,
+                Err(e) => return Err(format!("Could not batch delete files: {}", e)),
+            }
         }
+
+        Ok(())
     }
 }
