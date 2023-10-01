@@ -11,6 +11,7 @@ use std::time::Instant;
 
 use crate::crypto;
 use crate::storage::Storage;
+use crate::HashMapEntry;
 use crate::CHUNK_SIZE;
 
 pub const HASHMAP_NAME: &str = "filenames.bin";
@@ -83,13 +84,14 @@ pub fn _create_dir_if_not_exist(local_directory: String) {
     }
 }
 
-pub async fn get_filenames_from_storage(storage: &impl Storage) -> HashMap<String, Vec<u8>> {
+pub async fn get_filenames_from_storage(storage: &impl Storage) -> HashMap<String, HashMapEntry> {
     match storage.download(HASHMAP_NAME).await {
         Ok(encoded) => bincode::deserialize(&encoded).unwrap(),
         Err(_) => {
-            let empty_hashmap = bincode::serialize(&HashMap::<String, Vec<u8>>::new()).unwrap();
+            let empty_hashmap =
+                bincode::serialize(&HashMap::<String, HashMapEntry>::new()).unwrap();
             storage.upload(HASHMAP_NAME, &empty_hashmap).await.unwrap();
-            HashMap::<String, Vec<u8>>::new()
+            HashMap::<String, HashMapEntry>::new()
         }
     }
 }

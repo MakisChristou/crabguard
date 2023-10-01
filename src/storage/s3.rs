@@ -124,6 +124,7 @@ impl Storage for S3Storage {
     }
 
     async fn list(&self) -> Result<Vec<String>, String> {
+        todo!();
         // List all files in a bucket
         let list_req = ListObjectsV2Request {
             bucket: self.bucket_name.to_string(),
@@ -149,6 +150,7 @@ impl Storage for S3Storage {
     }
 
     async fn size_of(&self, encrypted_filenames: HashSet<String>) -> Result<i64, String> {
+        todo!();
         // List all files in a bucket
         let list_req = ListObjectsV2Request {
             bucket: self.bucket_name.to_string(),

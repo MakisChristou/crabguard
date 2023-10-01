@@ -33,6 +33,18 @@ struct Data {
     filenames: HashMap<String, Vec<u8>>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct HashMapEntry {
+    name_blob: Vec<u8>,
+    size: usize,
+}
+
+impl HashMapEntry {
+    pub fn new(name_blob: Vec<u8>, size: usize) -> Self {
+        HashMapEntry { name_blob, size }
+    }
+}
+
 async fn encrypt_and_upload_data_chunk(
     data: &Vec<u8>,
     plaintext_filename: &str,
@@ -60,9 +72,10 @@ async fn encrypt_and_upload_data_chunk(
 
 async fn add_name_to_hashmap(
     plaintext_filename: &str,
-    filenames: &mut HashMap<String, Vec<u8>>,
+    filenames: &mut HashMap<String, HashMapEntry>,
     key_bytes: Vec<u8>,
     storage: &impl Storage,
+    data_len: usize,
 ) -> Result<(), Unspecified> {
     let hashed_filename = hex::encode(Sha256::digest(plaintext_filename)).to_string();
 
@@ -80,7 +93,7 @@ async fn add_name_to_hashmap(
     let mut name_blob: Vec<u8> = Vec::new();
     name_blob.extend_from_slice(starting_value);
     name_blob.extend_from_slice(&encrypted_name);
-    filenames.insert(hashed_filename, name_blob);
+    filenames.insert(hashed_filename, HashMapEntry::new(name_blob, data_len));
 
     let encoded: Vec<u8> = bincode::serialize(&filenames).unwrap();
     storage.upload(HASHMAP_NAME, &encoded).await.unwrap();
@@ -90,7 +103,7 @@ async fn add_name_to_hashmap(
 
 async fn remove_names_from_hashmap(
     hashed_filenames: HashSet<String>,
-    filenames: &mut HashMap<String, Vec<u8>>,
+    filenames: &mut HashMap<String, HashMapEntry>,
     storage: &impl Storage,
 ) -> Result<(), Unspecified> {
     for hashed_filename in hashed_filenames {
@@ -127,7 +140,7 @@ async fn download_and_decrypt_chunk(
 }
 
 fn get_unique_filenames(
-    filenames: &HashMap<String, Vec<u8>>,
+    filenames: &HashMap<String, HashMapEntry>,
     files: &[String],
     key_bytes: Vec<u8>,
 ) -> HashSet<String> {
@@ -135,12 +148,12 @@ fn get_unique_filenames(
     let mut file_names = HashSet::new();
 
     for filename in filtered_files {
-        if let Some(name_blob) = filenames.get(filename) {
-            let starting_value: Vec<u8> = name_blob[..NONCE_LEN].try_into().unwrap();
+        if let Some(entry) = filenames.get(filename) {
+            let starting_value: Vec<u8> = entry.name_blob[..NONCE_LEN].try_into().unwrap();
             let nonce_array: [u8; NONCE_LEN] = starting_value.try_into().unwrap();
             let nonce_sequence = CounterNonceSequence::new(nonce_array);
 
-            let encrypted_name: Vec<u8> = name_blob[NONCE_LEN..].try_into().unwrap();
+            let encrypted_name: Vec<u8> = entry.name_blob[NONCE_LEN..].try_into().unwrap();
 
             match crypto::decrypt(encrypted_name, key_bytes.clone(), nonce_sequence) {
                 Ok(decrypted_name) => {
@@ -163,7 +176,7 @@ fn get_unique_filenames(
 
 fn get_all_filenames_of(
     plaintext_filename: &str,
-    filenames: &HashMap<String, Vec<u8>>,
+    filenames: &HashMap<String, HashMapEntry>,
     files: &[String],
     key_bytes: Vec<u8>,
 ) -> HashSet<String> {
@@ -171,12 +184,12 @@ fn get_all_filenames_of(
     let mut file_names = HashSet::new();
 
     for filename in filtered_files {
-        if let Some(name_blob) = filenames.get(filename) {
-            let starting_value: Vec<u8> = name_blob[..NONCE_LEN].try_into().unwrap();
+        if let Some(entry) = filenames.get(filename) {
+            let starting_value: Vec<u8> = entry.name_blob[..NONCE_LEN].try_into().unwrap();
             let nonce_array: [u8; NONCE_LEN] = starting_value.try_into().unwrap();
             let nonce_sequence = CounterNonceSequence::new(nonce_array);
 
-            let encrypted_name: Vec<u8> = name_blob[NONCE_LEN..].try_into().unwrap();
+            let encrypted_name: Vec<u8> = entry.name_blob[NONCE_LEN..].try_into().unwrap();
 
             let decrypted_name =
                 crypto::decrypt(encrypted_name, key_bytes.clone(), nonce_sequence).unwrap();
@@ -195,7 +208,7 @@ async fn handle_upload(
     file_path: &str,
     config: Config,
     storage: &impl Storage,
-    filenames: &mut HashMap<String, Vec<u8>>,
+    filenames: &mut HashMap<String, HashMapEntry>,
 ) -> Result<(), Unspecified> {
     let path = Path::new(file_path);
     let mut file = File::open(file_path).unwrap();
@@ -257,6 +270,7 @@ async fn handle_upload(
                 filenames,
                 config.key_bytes.clone(),
                 storage,
+                chunk_data.len(),
             )
             .await?;
 
@@ -276,7 +290,7 @@ async fn handle_download(
     file_name: &str,
     config: Config,
     storage: &impl Storage,
-    filenames: &mut HashMap<String, Vec<u8>>,
+    filenames: &mut HashMap<String, HashMapEntry>,
 ) -> Result<(), Unspecified> {
     let path = Path::new(file_name);
 
@@ -294,8 +308,14 @@ async fn handle_download(
             config.key_bytes.clone(),
         );
 
-        let total_size = storage.size_of(associated_filenames).await;
-        let num_chunks = total_size.unwrap() / CHUNK_SIZE as i64;
+        let mut total_size = 0;
+
+        for assosiated_filename in associated_filenames {
+            let hashmap_entry = filenames.get(&assosiated_filename).unwrap();
+            total_size += hashmap_entry.size;
+        }
+
+        let num_chunks = (total_size / CHUNK_SIZE) as i64;
 
         // Initialize the progress bar
         let pb = utils::create_progress_bar(num_chunks.try_into().unwrap());
@@ -333,7 +353,7 @@ async fn handle_download(
 async fn handle_delete(
     file_name: &str,
     storage: &impl Storage,
-    filenames: &mut HashMap<String, Vec<u8>>,
+    filenames: &mut HashMap<String, HashMapEntry>,
     config: Config,
 ) -> Result<(), Unspecified> {
     let path = Path::new(file_name);
@@ -355,7 +375,7 @@ async fn handle_delete(
 }
 
 async fn handle_list(
-    filenames: &HashMap<String, Vec<u8>>,
+    filenames: &HashMap<String, HashMapEntry>,
     config: Config,
 ) -> Result<(), Unspecified> {
     let files: Vec<String> = filenames.keys().cloned().collect();
@@ -376,7 +396,7 @@ async fn main() -> Result<(), Unspecified> {
     let config = Config::from_env();
     let backblaze_storage = S3Storage::from_config(config.clone());
 
-    let mut filenames: HashMap<String, Vec<u8>> =
+    let mut filenames: HashMap<String, HashMapEntry> =
         utils::get_filenames_from_storage(&backblaze_storage).await;
 
     match &Cli::parse_arguments().command {
