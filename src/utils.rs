@@ -81,8 +81,8 @@ pub fn _create_dir_if_not_exist(local_directory: String) {
     }
 }
 
-pub fn create_progress_bar(num_chunks: u64) -> ProgressBar {
-    let pb = ProgressBar::new(num_chunks * CHUNK_SIZE as u64);
+pub fn create_progress_bar(total_chunks: u64) -> ProgressBar {
+    let pb = ProgressBar::new(total_chunks * CHUNK_SIZE as u64);
     pb.set_style(ProgressStyle::default_bar()
         .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}").unwrap()
         .progress_chars("#>-"));

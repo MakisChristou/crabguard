@@ -3,11 +3,12 @@ use filename_handler::FileNameHandler;
 use ring::aead::NONCE_LEN;
 use ring::error::Unspecified;
 use sha2::{Digest, Sha256};
-use std::fs;
 use std::fs::File;
+use std::fs::OpenOptions;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
+use std::io::Write;
 use std::path::Path;
 use std::rc::Rc;
 use std::time::Instant;
@@ -98,7 +99,7 @@ async fn handle_upload(
         let plaintext_filename = file_name.to_str().unwrap();
 
         let file_len = file.metadata().unwrap().len() as usize;
-        let num_chunks = (file_len + CHUNK_SIZE - 1) / CHUNK_SIZE;
+        let total_chunks = (file_len + CHUNK_SIZE - 1) / CHUNK_SIZE;
 
         // Get the number of chunks assosiated with this file that were previously uploaded
         let associated_filenames =
@@ -106,7 +107,7 @@ async fn handle_upload(
 
         let mut remote_chunks = associated_filenames.len();
 
-        if remote_chunks > num_chunks {
+        if remote_chunks > total_chunks {
             handle_delete(
                 plaintext_filename,
                 storage,
@@ -117,7 +118,7 @@ async fn handle_upload(
             remote_chunks = 0;
         }
 
-        if remote_chunks == num_chunks {
+        if remote_chunks == total_chunks {
             println!("File {} already uploaded!", plaintext_filename);
             let answer = utils::prompt_yes_no("Do you want to replace it? [y|n]").unwrap();
 
@@ -136,7 +137,7 @@ async fn handle_upload(
         }
 
         // Initialize the progress bar
-        let pb = utils::create_progress_bar(num_chunks as u64);
+        let pb = utils::create_progress_bar(total_chunks as u64);
         let start_time = Instant::now();
 
         // Move progress bar and file pointer accordingly
@@ -146,7 +147,7 @@ async fn handle_upload(
 
         let mut chunks_sent_so_far = 0;
 
-        for chunk in remote_chunks..num_chunks {
+        for chunk in remote_chunks..total_chunks {
             let mut chunk_data = vec![0; CHUNK_SIZE];
             let bytes_read = file.read(&mut chunk_data).unwrap();
             chunk_data.truncate(bytes_read); // Handle last chunk
@@ -190,24 +191,34 @@ async fn handle_download(
     if let Some(file_name) = path.file_name() {
         let plaintext_filename = file_name.to_str().unwrap();
 
-        let mut complete_plaintext: Vec<u8> = Vec::new();
-        let mut current_chunk = 0;
-
         let associated_filenames =
             filename_handler.get_all_filenames_of(plaintext_filename, config.key_bytes.clone());
 
-        let mut total_size = 0;
+        
 
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(true)
+            .open(file_name)
+            .unwrap();
+
+        // Start from the last stored chunk
+        let mut current_chunk = (file.metadata().unwrap().len() / CHUNK_SIZE as u64) as usize;
+
+        let mut total_size = 0;
         for assosiated_filename in associated_filenames {
             let hashmap_entry = filename_handler.get(&assosiated_filename).unwrap();
             total_size += hashmap_entry.size;
         }
 
-        let num_chunks = (total_size / CHUNK_SIZE) as i64;
+        let total_chunks = (total_size / CHUNK_SIZE) as i64;
 
         // Initialize the progress bar
-        let pb = utils::create_progress_bar(num_chunks.try_into().unwrap());
+        let pb = utils::create_progress_bar(total_chunks.try_into().unwrap());
         let start_time = Instant::now();
+        pb.inc((current_chunk * CHUNK_SIZE) as u64);
+        let mut chunks_so_far = 0;
 
         loop {
             match download_and_decrypt_chunk(
@@ -217,21 +228,20 @@ async fn handle_download(
             )
             .await
             {
-                Ok(mut decrypted_data) => {
-                    complete_plaintext.append(&mut decrypted_data);
-                    utils::update_progress_bar(&pb, current_chunk, &start_time);
+                Ok(decrypted_data) => {
+                    file.write_all(&decrypted_data).unwrap();
+                    utils::update_progress_bar(&pb, chunks_so_far, &start_time);
                 }
                 Err(e) => {
                     if current_chunk != 0 {
-                        fs::write(file_name, complete_plaintext.clone()).unwrap();
                         return Ok(());
                     } else {
                         panic!("{}", e);
                     }
                 }
             }
-
             current_chunk += 1;
+            chunks_so_far += 1;
         }
     } else {
         panic!("Path given does not contain filename");
