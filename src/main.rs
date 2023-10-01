@@ -24,6 +24,7 @@ mod filename_handler;
 mod storage;
 mod utils;
 
+const MAX_RETRIES: usize = 3;
 const CHUNK_SIZE: usize = 1024 * 1024; // 1 MiB chunks
 
 async fn encrypt_and_upload_data_chunk(
@@ -43,12 +44,22 @@ async fn encrypt_and_upload_data_chunk(
 
     let hashed_filename = hex::encode(Sha256::digest(plaintext_filename)).to_string();
 
-    storage
-        .upload(&hashed_filename, &data_to_store)
-        .await
-        .unwrap();
+    let mut retries = 0;
 
-    Ok(())
+    while retries < MAX_RETRIES {
+        match storage.upload(&hashed_filename, &data_to_store).await {
+            Ok(_) => {
+                return Ok(());
+            }
+            Err(e) => {
+                println!("{}, retrying...", e);
+                retries += 1;
+                continue;
+            }
+        }
+    }
+
+    return Err(Unspecified);
 }
 
 async fn download_and_decrypt_chunk(
@@ -93,7 +104,18 @@ async fn handle_upload(
         let associated_filenames =
             filename_handler.get_all_filenames_of(plaintext_filename, config.key_bytes.clone());
 
-        let remote_chunks = associated_filenames.len();
+        let mut remote_chunks = associated_filenames.len();
+
+        if remote_chunks > num_chunks {
+            handle_delete(
+                plaintext_filename,
+                storage,
+                filename_handler,
+                config.clone(),
+            )
+            .await?;
+            remote_chunks = 0;
+        }
 
         if remote_chunks == num_chunks {
             println!("File {} already uploaded!", plaintext_filename);
@@ -107,6 +129,7 @@ async fn handle_upload(
                     config.clone(),
                 )
                 .await?;
+                remote_chunks = 0;
             } else {
                 return Ok(());
             }
