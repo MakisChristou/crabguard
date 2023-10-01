@@ -1,5 +1,7 @@
 🦀🔒 crabguard: A cli tool for end-to-end encryption for remote and local storage
 
+[![crates.io](https://buildstats.info/crate/crabguard)](https://crates.io/crates/crabguard)
+
 ## Features
 - Encrypted upload, download and delete operations on Amazon S3 storage
 - AES-GCM symmetric encryption with random 96-bit nonce

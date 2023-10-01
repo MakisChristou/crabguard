@@ -26,7 +26,7 @@ mod storage;
 mod utils;
 
 const MAX_RETRIES: usize = 3;
-const CHUNK_SIZE: usize = 1024 * 1024; // 1 MiB chunks
+const CHUNK_SIZE: usize = 1024 * 1024;
 
 async fn encrypt_and_upload_data_chunk(
     data: &Vec<u8>,
@@ -193,8 +193,6 @@ async fn handle_download(
 
         let associated_filenames =
             filename_handler.get_all_filenames_of(plaintext_filename, config.key_bytes.clone());
-
-        
 
         let mut file = OpenOptions::new()
             .create(true)
