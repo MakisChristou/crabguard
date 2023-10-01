@@ -52,25 +52,4 @@ impl Storage for LocalStorage {
     async fn batch_delete(&self, _filenames: HashSet<String>) -> Result<(), String> {
         todo!()
     }
-
-    async fn list(&self) -> Result<Vec<String>, String> {
-        match fs::read_dir(&self.path) {
-            Ok(file_names) => {
-                let res: Vec<String> = file_names
-                    .filter_map(Result::ok)
-                    .filter(|entry| entry.path().is_file())
-                    .map(|entry| entry.file_name().to_str().unwrap().to_owned())
-                    .collect();
-                Ok(res)
-            }
-            Err(e) => Err(format!(
-                "Could not list files {} with error: {}",
-                self.path, e
-            )),
-        }
-    }
-
-    async fn size_of(&self, _encrypted_filenames: HashSet<String>) -> Result<i64, String> {
-        todo!()
-    }
 }

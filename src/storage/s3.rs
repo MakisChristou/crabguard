@@ -9,7 +9,7 @@ use bytes::Bytes;
 use futures_util::stream::StreamExt;
 use rusoto_core::Region;
 use rusoto_s3::{
-    Delete, DeleteObjectRequest, DeleteObjectsRequest, GetObjectRequest, ListObjectsV2Request,
+    Delete, DeleteObjectRequest, DeleteObjectsRequest, GetObjectRequest,
     ObjectIdentifier, PutObjectRequest, S3Client, S3,
 };
 extern crate dotenv;
@@ -120,62 +120,6 @@ impl Storage for S3Storage {
         match self.s3_client.delete_objects(delete_req).await {
             Ok(_) => Ok(()),
             Err(e) => Err(format!("Could not batch delete files: {}", e)),
-        }
-    }
-
-    async fn list(&self) -> Result<Vec<String>, String> {
-        todo!();
-        // List all files in a bucket
-        let list_req = ListObjectsV2Request {
-            bucket: self.bucket_name.to_string(),
-            ..Default::default()
-        };
-
-        match self.s3_client.list_objects_v2(list_req).await {
-            Ok(output) => {
-                if let Some(objects) = output.contents {
-                    let mut filenames = Vec::new();
-                    for object in objects {
-                        if let Some(key) = object.key {
-                            filenames.push(key);
-                        }
-                    }
-                    Ok(filenames)
-                } else {
-                    Err("Could not list files".to_string())
-                }
-            }
-            Err(e) => Err(format!("Could not list files {}", e)),
-        }
-    }
-
-    async fn size_of(&self, encrypted_filenames: HashSet<String>) -> Result<i64, String> {
-        todo!();
-        // List all files in a bucket
-        let list_req = ListObjectsV2Request {
-            bucket: self.bucket_name.to_string(),
-            ..Default::default()
-        };
-
-        let mut total_size = 0;
-
-        match self.s3_client.list_objects_v2(list_req).await {
-            Ok(output) => {
-                if let Some(objects) = output.contents {
-                    for object in objects {
-                        if let Some(key) = object.key {
-                            if encrypted_filenames.contains(&key) {
-                                let size = object.size.unwrap_or(0);
-                                total_size += size;
-                            }
-                        }
-                    }
-                    Ok(total_size)
-                } else {
-                    return Err("Could not get file size".to_string());
-                }
-            }
-            Err(e) => return Err(format!("Could not get file size {}", e)),
         }
     }
 }
