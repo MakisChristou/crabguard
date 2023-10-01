@@ -1,6 +1,6 @@
 [package]
 name = "crabguard"
-version = "0.1.2"
+version = "0.1.3"
 description = "A cli tool for end-to-end encryption for s3 storage"
 edition = "2021"
 authors = ["Makis Christou <makis_christou@protonmail.com>"]
