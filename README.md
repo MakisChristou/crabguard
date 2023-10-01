@@ -7,7 +7,13 @@
 - AES-GCM symmetric encryption with random 96-bit nonce
 - Hashed filenames using sha256
 - File chuking (currently chunk size is hardcoded to 1MB)
-- Resume upload when interuppted
+- Resume upload/download when interuppted
+
+## Future Work
+- Handle incomplete/corrupted files
+- Password based key derivation
+- Dynamic file chunking
+- Improve latency and performance (e.g. upload/download multiple chunks in separate connections)
 
 ## Getting started
 Create a `.env` file like so
