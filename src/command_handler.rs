@@ -2,6 +2,7 @@ use std::{
     fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
     path::Path,
+    rc::Rc,
     time::Instant,
 };
 
@@ -15,14 +16,30 @@ use crate::{
 use ring::{aead::NONCE_LEN, error::Unspecified};
 use sha2::{Digest, Sha256};
 
-pub struct CommandHandler {}
+pub struct CommandHandler {
+    storage: Rc<dyn Storage>,
+    filename_handler: FileNameHandler,
+    config: Config,
+}
 
 impl CommandHandler {
+    pub fn new(
+        storage: Rc<dyn Storage>,
+        filename_handler: FileNameHandler,
+        config: Config,
+    ) -> Self {
+        CommandHandler {
+            storage,
+            filename_handler,
+            config,
+        }
+    }
+
     async fn encrypt_and_upload_data_chunk(
         data: &Vec<u8>,
         plaintext_filename: &str,
         key_bytes: Vec<u8>,
-        storage: &impl Storage,
+        storage: Rc<dyn Storage>,
     ) -> Result<(), Unspecified> {
         let nonce_sequence = CounterNonceSequence::new_random();
         let starting_value = nonce_sequence.0.to_vec();
@@ -51,13 +68,13 @@ impl CommandHandler {
             }
         }
 
-        return Err(Unspecified);
+        Err(Unspecified)
     }
 
     async fn download_and_decrypt_chunk(
         plaintext_filename: &str,
         key_bytes: Vec<u8>,
-        storage: &impl Storage,
+        storage: Rc<dyn Storage>,
     ) -> Result<Vec<u8>, Unspecified> {
         let file_contents = storage
             .download(&hex::encode(Sha256::digest(plaintext_filename)).to_string())
@@ -78,12 +95,7 @@ impl CommandHandler {
         Ok(decrypted_data)
     }
 
-    pub async fn handle_upload(
-        file_path: &str,
-        config: Config,
-        storage: &impl Storage,
-        filename_handler: &mut FileNameHandler,
-    ) -> Result<(), Unspecified> {
+    pub async fn handle_upload(&mut self, file_path: &str) -> Result<(), Unspecified> {
         let path = Path::new(file_path);
         let mut file = File::open(file_path).unwrap();
 
@@ -94,19 +106,14 @@ impl CommandHandler {
             let total_chunks = (file_len + CHUNK_SIZE - 1) / CHUNK_SIZE;
 
             // Get the number of chunks assosiated with this file that were previously uploaded
-            let associated_filenames =
-                filename_handler.get_all_filenames_of(plaintext_filename, config.key_bytes.clone());
+            let associated_filenames = self
+                .filename_handler
+                .get_all_filenames_of(plaintext_filename, self.config.key_bytes.clone());
 
             let mut remote_chunks = associated_filenames.len();
 
             if remote_chunks > total_chunks {
-                Self::handle_delete(
-                    plaintext_filename,
-                    storage,
-                    filename_handler,
-                    config.clone(),
-                )
-                .await?;
+                self.handle_delete(plaintext_filename).await?;
                 remote_chunks = 0;
             }
 
@@ -115,13 +122,7 @@ impl CommandHandler {
                 let answer = utils::prompt_yes_no("Do you want to replace it? [y|n]").unwrap();
 
                 if answer {
-                    Self::handle_delete(
-                        plaintext_filename,
-                        storage,
-                        filename_handler,
-                        config.clone(),
-                    )
-                    .await?;
+                    self.handle_delete(plaintext_filename).await?;
                     remote_chunks = 0;
                 } else {
                     return Ok(());
@@ -147,15 +148,15 @@ impl CommandHandler {
                 Self::encrypt_and_upload_data_chunk(
                     &chunk_data,
                     &format!("{}_{}", plaintext_filename, chunk),
-                    config.key_bytes.clone(),
-                    storage,
+                    self.config.key_bytes.clone(),
+                    Rc::clone(&self.storage),
                 )
                 .await?;
 
-                filename_handler
+                self.filename_handler
                     .add_name_to_hashmap(
                         &format!("{}_{}", plaintext_filename, chunk),
-                        config.key_bytes.clone(),
+                        self.config.key_bytes.clone(),
                         chunk_data.len(),
                     )
                     .await?;
@@ -172,19 +173,15 @@ impl CommandHandler {
         Ok(())
     }
 
-    pub async fn handle_download(
-        file_name: &str,
-        config: Config,
-        storage: &impl Storage,
-        filename_handler: &FileNameHandler,
-    ) -> Result<(), Unspecified> {
+    pub async fn handle_download(&mut self, file_name: &str) -> Result<(), Unspecified> {
         let path = Path::new(file_name);
 
         if let Some(file_name) = path.file_name() {
             let plaintext_filename = file_name.to_str().unwrap();
 
-            let associated_filenames =
-                filename_handler.get_all_filenames_of(plaintext_filename, config.key_bytes.clone());
+            let associated_filenames = self
+                .filename_handler
+                .get_all_filenames_of(plaintext_filename, self.config.key_bytes.clone());
 
             let mut file = OpenOptions::new()
                 .create(true)
@@ -198,7 +195,7 @@ impl CommandHandler {
 
             let mut total_size = 0;
             for assosiated_filename in associated_filenames {
-                let hashmap_entry = filename_handler.get(&assosiated_filename).unwrap();
+                let hashmap_entry = self.filename_handler.get(&assosiated_filename).unwrap();
                 total_size += hashmap_entry.size;
             }
 
@@ -213,8 +210,8 @@ impl CommandHandler {
             loop {
                 match Self::download_and_decrypt_chunk(
                     &format!("{}_{}", plaintext_filename, current_chunk),
-                    config.key_bytes.clone(),
-                    storage,
+                    self.config.key_bytes.clone(),
+                    Rc::clone(&self.storage),
                 )
                 .await
                 {
@@ -238,23 +235,19 @@ impl CommandHandler {
         }
     }
 
-    pub async fn handle_delete(
-        file_name: &str,
-        storage: &impl Storage,
-        filename_handler: &mut FileNameHandler,
-        config: Config,
-    ) -> Result<(), Unspecified> {
+    pub async fn handle_delete(&mut self, file_name: &str) -> Result<(), Unspecified> {
         let path = Path::new(file_name);
         if let Some(file_name) = path.file_name() {
             let plaintext_filename = file_name.to_str().unwrap();
-            let associated_filenames =
-                filename_handler.get_all_filenames_of(plaintext_filename, config.key_bytes);
+            let associated_filenames = self
+                .filename_handler
+                .get_all_filenames_of(plaintext_filename, self.config.key_bytes.clone());
 
-            storage
+            self.storage
                 .batch_delete(associated_filenames.clone())
                 .await
                 .unwrap();
-            filename_handler
+            self.filename_handler
                 .remove_names_from_hashmap(associated_filenames)
                 .await?;
         } else {
@@ -263,11 +256,10 @@ impl CommandHandler {
         Ok(())
     }
 
-    pub async fn handle_list(
-        filename_handler: &FileNameHandler,
-        config: Config,
-    ) -> Result<(), Unspecified> {
-        let unique_file_names = filename_handler.get_unique_filenames(config.key_bytes);
+    pub async fn handle_list(&self) -> Result<(), Unspecified> {
+        let unique_file_names = self
+            .filename_handler
+            .get_unique_filenames(self.config.key_bytes.clone());
 
         if unique_file_names.is_empty() {
             println!("Bucket is empty!");

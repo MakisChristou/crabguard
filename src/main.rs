@@ -22,38 +22,21 @@ const CHUNK_SIZE: usize = 1024 * 1024;
 async fn main() -> Result<(), Unspecified> {
     let config = Config::from_env();
     let backblaze_storage = S3Storage::from_config(config.clone());
-    let mut filename_handler = FileNameHandler::new(Rc::new(backblaze_storage.clone())).await;
+    let filename_handler = FileNameHandler::new(Rc::new(backblaze_storage.clone())).await;
+
+    let mut command_handler =
+        CommandHandler::new(Rc::new(backblaze_storage), filename_handler, config);
 
     match &Cli::parse_arguments().command {
         Some(Commands::Upload { file_path }) => {
-            CommandHandler::handle_upload(
-                file_path,
-                config,
-                &backblaze_storage,
-                &mut filename_handler,
-            )
-            .await?;
+            command_handler.handle_upload(file_path).await?;
         }
         Some(Commands::Download { file_name }) => {
-            CommandHandler::handle_download(
-                file_name,
-                config,
-                &backblaze_storage,
-                &filename_handler,
-            )
-            .await?
+            command_handler.handle_download(file_name).await?
         }
-        Some(Commands::Delete { file_name }) => {
-            CommandHandler::handle_delete(
-                file_name,
-                &backblaze_storage,
-                &mut filename_handler,
-                config,
-            )
-            .await?
-        }
+        Some(Commands::Delete { file_name }) => command_handler.handle_delete(file_name).await?,
         Some(Commands::List {}) => {
-            CommandHandler::handle_list(&filename_handler, config).await?;
+            command_handler.handle_list().await?;
         }
         None => {
             println!("Welcome to 🦀🔒 crabguard!");
