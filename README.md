@@ -8,6 +8,7 @@
 - Hashed filenames using sha256
 - File chuking (currently chunk size is hardcoded to 1MB)
 - Resume upload/download when interuppted
+- Handles big files (as large as the disk can handle)
 
 ## Future Work
 - Handle incomplete/corrupted files
