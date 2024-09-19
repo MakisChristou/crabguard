@@ -46,3 +46,11 @@ cargo r --release -- delete 23-08-11\ 11-35-15\ 3555.jpg
 ```bash
 cargo r --release -- list
 ```
+
+```bash
+cargo r --release -- mnemonic
+```
+
+```bash
+cargo r --release -- keygen "train switch nuclear device polar tilt shift hurry board stick recall device"
+```

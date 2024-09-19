@@ -1,3 +1,4 @@
+use bip39::{generate_aes_key_from_mnemonic, generate_mnemonic};
 use config::Config;
 use filename_handler::FileNameHandler;
 use ring::error::Unspecified;
@@ -14,6 +15,7 @@ mod crypto;
 mod filename_handler;
 mod storage;
 mod utils;
+mod bip39;
 
 const MAX_RETRIES: usize = 3;
 const CHUNK_SIZE: usize = 1024 * 1024;
@@ -37,6 +39,15 @@ async fn main() -> Result<(), Unspecified> {
         Some(Commands::Delete { file_name }) => command_handler.handle_delete(file_name).await?,
         Some(Commands::List {}) => {
             command_handler.handle_list().await?;
+        }
+        Some(Commands::Mnemonic {  }) => {
+            let mnemonic = generate_mnemonic();
+            println!("Mnemonic: {}", mnemonic);
+
+        }
+        Some(Commands::Keygen { mnemonic }) => {
+            let aes_key = generate_aes_key_from_mnemonic(mnemonic.clone());
+            println!("AES Key: {}", hex::encode(aes_key))
         }
         None => {
             println!("Welcome to 🦀🔒 crabguard!");

@@ -21,6 +21,12 @@ pub enum Commands {
 
     /// List all storage files
     List {},
+
+    /// Generates a client side AES key from mnemonic
+    Keygen{mnemonic: String},
+
+    /// Generates a BIP39 mnemonic phrase
+    Mnemonic{}
 }
 
 impl Cli {
