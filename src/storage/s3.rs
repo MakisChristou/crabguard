@@ -1,17 +1,16 @@
 extern crate bytes;
 extern crate rusoto_core;
 extern crate rusoto_s3;
-
-use std::collections::HashSet;
-
 use async_trait::async_trait;
 use bytes::Bytes;
+use eyre::eyre;
 use futures_util::stream::StreamExt;
 use rusoto_core::Region;
 use rusoto_s3::{
     Delete, DeleteObjectRequest, DeleteObjectsRequest, GetObjectRequest, ObjectIdentifier,
     PutObjectRequest, S3Client, S3,
 };
+use std::collections::HashSet;
 extern crate dotenv;
 use super::Storage;
 use crate::config::Config;
@@ -44,7 +43,7 @@ impl S3Storage {
 
 #[async_trait]
 impl Storage for S3Storage {
-    async fn upload(&self, filename: &str, data: &[u8]) -> Result<(), String> {
+    async fn upload(&self, filename: &str, data: &[u8]) -> eyre::Result<()> {
         let put_req = PutObjectRequest {
             bucket: self.bucket_name.to_string(),
             key: filename.to_string(),
@@ -54,11 +53,11 @@ impl Storage for S3Storage {
 
         match self.s3_client.put_object(put_req).await {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("Could not upload file {}", e)),
+            Err(e) => Err(eyre!("Could not upload file {}", e)),
         }
     }
 
-    async fn download(&self, filename: &str) -> Result<Vec<u8>, String> {
+    async fn download(&self, filename: &str) -> eyre::Result<Vec<u8>> {
         // Read data from a bucket
         let get_req = GetObjectRequest {
             bucket: self.bucket_name.to_string(),
@@ -77,14 +76,14 @@ impl Storage for S3Storage {
                         .collect::<Vec<u8>>();
                     return Ok(data);
                 } else {
-                    Err("Body of file is None".to_string())
+                    Err(eyre!("Body of file is None"))
                 }
             }
-            Err(e) => Err(format!("Could not download file {}", e)),
+            Err(e) => Err(eyre!("Could not download file {}", e)),
         }
     }
 
-    async fn delete(&self, filename: &str) -> Result<(), String> {
+    async fn delete(&self, filename: &str) -> eyre::Result<()> {
         // Delete data from a bucket
         let delete_req = DeleteObjectRequest {
             bucket: self.bucket_name.to_string(),
@@ -94,11 +93,11 @@ impl Storage for S3Storage {
 
         match self.s3_client.delete_object(delete_req).await {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("Could not delete file {}", e)),
+            Err(e) => Err(eyre!("Could not delete file {}", e)),
         }
     }
 
-    async fn batch_delete(&self, filenames: HashSet<String>) -> Result<(), String> {
+    async fn batch_delete(&self, filenames: HashSet<String>) -> eyre::Result<()> {
         // Convert the filenames into a Vec
         let filenames_vec: Vec<String> = filenames.into_iter().collect();
 
@@ -124,7 +123,7 @@ impl Storage for S3Storage {
 
             match self.s3_client.delete_objects(delete_req).await {
                 Ok(_) => continue,
-                Err(e) => return Err(format!("Could not batch delete files: {}", e)),
+                Err(e) => return Err(eyre!("Could not batch delete files: {}", e)),
             }
         }
 

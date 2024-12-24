@@ -1,7 +1,7 @@
-use std::{collections::HashSet, fs};
-
 use super::Storage;
 use async_trait::async_trait;
+use eyre::eyre;
+use std::{collections::HashSet, fs};
 
 #[derive(Clone)]
 pub struct LocalStorage {
@@ -19,37 +19,41 @@ impl LocalStorage {
 
 #[async_trait]
 impl Storage for LocalStorage {
-    async fn upload(&self, filename: &str, data: &[u8]) -> Result<(), String> {
+    async fn upload(&self, filename: &str, data: &[u8]) -> eyre::Result<()> {
         match fs::write(format!("{}/{}", &self.path, filename), data) {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!(
+            Err(e) => Err(eyre!(
                 "Could not upload file {} to {} with error: {}",
-                filename, self.path, e
+                filename,
+                self.path,
+                e
             )),
         }
     }
 
-    async fn download(&self, filename: &str) -> Result<Vec<u8>, String> {
+    async fn download(&self, filename: &str) -> eyre::Result<Vec<u8>> {
         match fs::read(format!("{}/{}", self.path, filename)) {
             Ok(data) => Ok(data),
-            Err(e) => Err(format!(
+            Err(e) => Err(eyre!(
                 "Could not download file {} with error: {}",
-                filename, e
+                filename,
+                e
             )),
         }
     }
 
-    async fn delete(&self, filename: &str) -> Result<(), String> {
+    async fn delete(&self, filename: &str) -> eyre::Result<()> {
         match fs::remove_file(format!("{}/{}", self.path, filename)) {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!(
+            Err(e) => Err(eyre!(
                 "Could not delete file {} with error: {}",
-                filename, e
+                filename,
+                e
             )),
         }
     }
 
-    async fn batch_delete(&self, _filenames: HashSet<String>) -> Result<(), String> {
+    async fn batch_delete(&self, _filenames: HashSet<String>) -> eyre::Result<()> {
         todo!()
     }
 }

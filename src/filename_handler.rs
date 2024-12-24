@@ -45,23 +45,12 @@ impl FileNameHandler {
         plaintext_filename: &str,
         key_bytes: Vec<u8>,
         data_len: usize,
-    ) -> Result<(), Unspecified> {
+    ) -> eyre::Result<()> {
         let hashed_filename = hex::encode(Sha256::digest(plaintext_filename)).to_string();
 
-        // Update the HashMap
-        let starting_value = &Sha256::digest(plaintext_filename)[..NONCE_LEN];
+        let name_blob =
+            crypto::encrypt_blob(plaintext_filename.try_into().unwrap(), key_bytes.clone())?;
 
-        let nonce_array: [u8; NONCE_LEN] = starting_value.try_into().unwrap();
-        let nonce_sequence = CounterNonceSequence::new(nonce_array);
-        let encrypted_name = crypto::encrypt(
-            plaintext_filename.try_into().unwrap(),
-            key_bytes.clone(),
-            nonce_sequence,
-        )?;
-        // Update the HashMap in RAM
-        let mut name_blob: Vec<u8> = Vec::new();
-        name_blob.extend_from_slice(starting_value);
-        name_blob.extend_from_slice(&encrypted_name);
         self.filenames
             .insert(hashed_filename, FileNameEntry::new(name_blob, data_len));
 
@@ -74,7 +63,7 @@ impl FileNameHandler {
     pub async fn remove_names_from_hashmap(
         &mut self,
         hashed_filenames: HashSet<String>,
-    ) -> Result<(), Unspecified> {
+    ) -> eyre::Result<()> {
         for hashed_filename in hashed_filenames {
             self.filenames.remove(&hashed_filename);
         }
@@ -92,13 +81,9 @@ impl FileNameHandler {
 
         for filename in filtered_files {
             if let Some(entry) = self.filenames.get(filename) {
-                let starting_value: Vec<u8> = entry.name_blob[..NONCE_LEN].try_into().unwrap();
-                let nonce_array: [u8; NONCE_LEN] = starting_value.try_into().unwrap();
-                let nonce_sequence = CounterNonceSequence::new(nonce_array);
-
                 let encrypted_name: Vec<u8> = entry.name_blob[NONCE_LEN..].try_into().unwrap();
 
-                match crypto::decrypt(encrypted_name, key_bytes.clone(), nonce_sequence) {
+                match crypto::decrypt_blob(encrypted_name, key_bytes.clone()) {
                     Ok(decrypted_name) => {
                         let s = String::from_utf8(decrypted_name).unwrap();
                         let mut parts = s.rsplitn(2, '_');
@@ -128,14 +113,10 @@ impl FileNameHandler {
 
         for filename in filtered_files {
             if let Some(entry) = self.filenames.get(filename) {
-                let starting_value: Vec<u8> = entry.name_blob[..NONCE_LEN].try_into().unwrap();
-                let nonce_array: [u8; NONCE_LEN] = starting_value.try_into().unwrap();
-                let nonce_sequence = CounterNonceSequence::new(nonce_array);
-
                 let encrypted_name: Vec<u8> = entry.name_blob[NONCE_LEN..].try_into().unwrap();
 
                 let decrypted_name =
-                    crypto::decrypt(encrypted_name, key_bytes.clone(), nonce_sequence).unwrap();
+                    crypto::decrypt_blob(encrypted_name, key_bytes.clone()).unwrap();
 
                 let s = String::from_utf8(decrypted_name).unwrap();
 

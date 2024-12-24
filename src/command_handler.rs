@@ -7,13 +7,10 @@ use std::{
 };
 
 use crate::{
-    config::Config,
-    crypto::{self, CounterNonceSequence},
-    filename_handler::FileNameHandler,
-    storage::Storage,
-    utils, CHUNK_SIZE, MAX_RETRIES,
+    config::Config, crypto, filename_handler::FileNameHandler, storage::Storage, utils, CHUNK_SIZE,
+    MAX_RETRIES,
 };
-use ring::{aead::NONCE_LEN, error::Unspecified};
+use eyre::eyre;
 use sha2::{Digest, Sha256};
 
 pub struct CommandHandler {
@@ -40,23 +37,15 @@ impl CommandHandler {
         plaintext_filename: &str,
         key_bytes: Vec<u8>,
         storage: Rc<dyn Storage>,
-    ) -> Result<(), Unspecified> {
-        let nonce_sequence = CounterNonceSequence::new_random();
-        let starting_value = nonce_sequence.0.to_vec();
-
-        let cypher_text_with_tag =
-            crypto::encrypt(data.to_owned(), key_bytes.clone(), nonce_sequence)?;
-
-        // Prepend the nonce on the ciphertext
-        let mut data_to_store = starting_value;
-        data_to_store.extend_from_slice(&cypher_text_with_tag);
+    ) -> eyre::Result<()> {
+        let ciphertext = crypto::encrypt_blob(data.to_owned(), key_bytes.clone())?;
 
         let hashed_filename = hex::encode(Sha256::digest(plaintext_filename)).to_string();
 
         let mut retries = 0;
 
         while retries < MAX_RETRIES {
-            match storage.upload(&hashed_filename, &data_to_store).await {
+            match storage.upload(&hashed_filename, &ciphertext).await {
                 Ok(_) => {
                     return Ok(());
                 }
@@ -68,34 +57,24 @@ impl CommandHandler {
             }
         }
 
-        Err(Unspecified)
+        Err(eyre!("Could not upload file"))
     }
 
     async fn download_and_decrypt_chunk(
         plaintext_filename: &str,
         key_bytes: Vec<u8>,
         storage: Rc<dyn Storage>,
-    ) -> Result<Vec<u8>, Unspecified> {
+    ) -> eyre::Result<Vec<u8>> {
         let file_contents = storage
             .download(&hex::encode(Sha256::digest(plaintext_filename)).to_string())
-            .await
-            .map_err(|_| Unspecified)?;
+            .await?;
 
-        // Extract nonce from first 12 bytes of file
-        let starting_value = &file_contents[..NONCE_LEN];
-        let nonce_array: [u8; NONCE_LEN] = starting_value.try_into().unwrap();
-        let nonce_sequence = CounterNonceSequence::new(nonce_array);
-
-        // Extract actual cyphertext
-        let cypher_text_with_tag = &file_contents[NONCE_LEN..];
-
-        let decrypted_data =
-            crypto::decrypt(cypher_text_with_tag.to_vec(), key_bytes, nonce_sequence)?;
+        let decrypted_data = crypto::decrypt_blob(file_contents.to_vec(), key_bytes)?;
 
         Ok(decrypted_data)
     }
 
-    pub async fn handle_upload(&mut self, file_path: &str) -> Result<(), Unspecified> {
+    pub async fn handle_upload(&mut self, file_path: &str) -> eyre::Result<()> {
         let path = Path::new(file_path);
         let mut file = File::open(file_path).unwrap();
 
@@ -173,7 +152,7 @@ impl CommandHandler {
         Ok(())
     }
 
-    pub async fn handle_download(&mut self, file_name: &str) -> Result<(), Unspecified> {
+    pub async fn handle_download(&mut self, file_name: &str) -> eyre::Result<()> {
         let path = Path::new(file_name);
 
         if let Some(file_name) = path.file_name() {
@@ -235,7 +214,7 @@ impl CommandHandler {
         }
     }
 
-    pub async fn handle_delete(&mut self, file_name: &str) -> Result<(), Unspecified> {
+    pub async fn handle_delete(&mut self, file_name: &str) -> eyre::Result<()> {
         let path = Path::new(file_name);
         if let Some(file_name) = path.file_name() {
             let plaintext_filename = file_name.to_str().unwrap();
@@ -256,7 +235,7 @@ impl CommandHandler {
         Ok(())
     }
 
-    pub async fn handle_list(&self) -> Result<(), Unspecified> {
+    pub async fn handle_list(&self) -> eyre::Result<()> {
         let unique_file_names = self
             .filename_handler
             .get_unique_filenames(self.config.key_bytes.clone());

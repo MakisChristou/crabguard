@@ -1,3 +1,5 @@
+use eyre::eyre;
+use eyre::Result;
 use rand::Rng;
 use ring::aead::Aad;
 use ring::aead::BoundKey;
@@ -8,7 +10,6 @@ use ring::aead::SealingKey;
 use ring::aead::UnboundKey;
 use ring::aead::AES_256_GCM;
 use ring::aead::NONCE_LEN;
-
 use ring::error::Unspecified;
 use ring::rand::{SecureRandom, SystemRandom};
 
@@ -39,7 +40,7 @@ impl NonceSequence for CounterNonceSequence {
     }
 }
 
-pub fn encrypt(
+fn encrypt(
     data: Vec<u8>,
     key_bytes: Vec<u8>,
     nonce_sequence: CounterNonceSequence,
@@ -63,7 +64,7 @@ pub fn encrypt(
     Ok(cypher_text_with_tag)
 }
 
-pub fn decrypt(
+fn decrypt(
     mut cypher_text_with_tag: Vec<u8>,
     key_bytes: Vec<u8>,
     nonce_sequence: CounterNonceSequence,
@@ -79,6 +80,43 @@ pub fn create_random_aes_key() -> Vec<u8> {
     let mut key_bytes = vec![0; AES_256_GCM.key_len()];
     rand.fill(&mut key_bytes).unwrap();
     key_bytes
+}
+
+pub fn encrypt_blob(plaintext: Vec<u8>, key_bytes: Vec<u8>) -> Result<Vec<u8>> {
+    let nonce_sequence = CounterNonceSequence::new_random();
+    let starting_value = nonce_sequence.0.to_vec();
+
+    let cypher_text_with_tag =
+        encrypt(plaintext, key_bytes, nonce_sequence).map_err(|_| eyre!("Unspecified"))?;
+
+    // Prepend the nonce on the ciphertext
+    let mut ciphertext = starting_value;
+    ciphertext.extend_from_slice(&cypher_text_with_tag);
+
+    Ok(ciphertext)
+}
+
+pub fn decrypt_blob(ciphertext: Vec<u8>, key_bytes: Vec<u8>) -> Result<Vec<u8>> {
+    // Extract nonce from first 12 bytes of file
+    let starting_value = &ciphertext[..NONCE_LEN];
+    let nonce_array: [u8; NONCE_LEN] = starting_value.try_into().unwrap();
+    let nonce_sequence = CounterNonceSequence::new(nonce_array);
+
+    // Extract actual cyphertext
+    let cypher_text_with_tag = &ciphertext[NONCE_LEN..];
+
+    let plaintext = decrypt(cypher_text_with_tag.to_vec(), key_bytes, nonce_sequence)
+        .map_err(|_| eyre!("Unspecified"))?;
+
+    Ok(plaintext)
+}
+
+pub fn encrypt_string(plaintext: String, key_bytes: Vec<u8>) -> Result<String> {
+    todo!()
+}
+
+pub fn decrypt_string(ciphertext: String, key_bytes: Vec<u8>) -> Result<String> {
+    todo!()
 }
 
 #[cfg(test)]
